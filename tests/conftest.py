@@ -21,6 +21,22 @@ def dir_referencias() -> Path:
     return REFERENCIAS
 
 
+@pytest.fixture(scope="session")
+def ruta_listado_sintetico(tmp_path_factory) -> Path:
+    """Listado DIAN sintético, generado en memoria y guardado fuera del repositorio."""
+    from tests.herramientas.listado_sintetico import crear_listado
+
+    return crear_listado(tmp_path_factory.mktemp("listado") / "listado_sintetico.xlsx")
+
+
+@pytest.fixture(scope="session")
+def listado_sintetico(ruta_listado_sintetico: Path):
+    """El listado sintético ya leído."""
+    from dian_hojas.infraestructura.lector_dian_xlsx import LectorDianXlsx
+
+    return LectorDianXlsx().leer(ruta_listado_sintetico)
+
+
 def pytest_collection_modifyitems(config, items):
     """Salta las pruebas que dependen de Referencias/ cuando la carpeta no existe."""
     if REFERENCIAS.is_dir():

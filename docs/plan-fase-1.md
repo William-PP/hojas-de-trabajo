@@ -205,8 +205,9 @@ class EscritorOpenpyxl:
     def escribir(self, resultado, cliente, periodo, destino, *, ruta_listado) -> Path
 ```
 
-- Hoja `Dian`: se copia del libro de origen celda por celda (valor, estilo, ancho, alto) sin tocar
-  nada, y se conserva `freeze_panes` y el autofiltro.
+- Hoja `Dian`: **no se copia celda por celda**. Se reutiliza el libro original (D-21): se borran las
+  demás hojas, se renombra la primera como `Dian`, se limpian nombres definidos y vínculos externos y
+  se guarda. Así se conservan intactos valores, orden, estilos, anchos, `freeze_panes` y autofiltro.
 - `Sumatorias`, `Ventas`, `Compras`: se construyen con tres helpers privados
   (`_encabezado`, `_bloque`, `_total`) que reciben la fila de inicio y devuelven la siguiente.
 - Fórmulas: `Total Neto =R{f}-P{f}`, totales `=SUM(P{ini}:P{fin})`, en inglés (D-03).
@@ -262,15 +263,18 @@ Bloquea la escritura si `puede_exportar` es falso y devuelve el detalle de los c
 
 ### Fixture sintético
 
-Script `tests/herramientas/generar_listado_sintetico.py` que produce
-`tests/fixtures/listado_dian_sintetico.xlsx` con datos inventados:
+Se genera **en memoria** con `tests/herramientas/listado_sintetico.py` (D-25), no se versiona un
+`.xlsx`. `crear_listado(ruta, ...)` escribe un listado con datos inventados y banderas para variar el
+caso (`duplicado`, `fuera_de_periodo`, `desconocido`, `otros_impuestos`):
 
-- 2 facturas emitidas, 6 recibidas, 1 documento soporte, 1 documento equivalente, 1 nota crédito
-  recibida, 1 nota crédito emitida, 1 nómina, 1 `Application response`.
-- Folio `NCP14858`, prefijo vacío, NIT con ceros a la izquierda, CUFE repetido en una fila extra
-  para probar C3, y una fecha del mes anterior para probar C5.
+- 2 facturas emitidas, 6 recibidas, 2 documentos soporte (uno emitido y uno recibido, D-10),
+  1 documento equivalente, 2 notas crédito recibidas, 1 nota crédito emitida, 1 nómina y
+  1 `Application response`.
+- Folio `NCP14858`, prefijo vacío, folio `000123` con ceros a la izquierda, NIT como texto y
+  fechas en formato DIAN.
 
-Se genera una vez y se versiona el `.xlsx`, para que las pruebas no dependan de datos reales.
+El caso base no tiene duplicados ni fechas fuera del mes: esas variantes se piden explícitamente en
+cada prueba para no ensuciar el golden.
 
 ---
 
@@ -294,7 +298,51 @@ Cada paso con su commit. Al final: resumen, cuadres en verde y espera de aprobac
 | Riesgo | Mitigación |
 |---|---|
 | El listado real trae tipos de documento nuevos | `SIN_CLASIFICAR` visible y reportado; nunca se descarta |
-| El `Dian` de origen tiene formato raro (filas 1000, estilos) | se copia celda a celda, sin reinterpretar |
+| El `Dian` de origen tiene formato raro (filas 1000, estilos) | se reutiliza el libro original (D-21), sin reescribirlo |
 | Redondeos de 1 centavo | comparación con tolerancia de 0,01 solo en C2 |
 | `Application response` (D-08) ya decidido | categoría `RESPUESTA_DIAN`, excluida de las hojas y contada en C1 como excluido justificado |
 | La hoja de referencia tiene errores propios (D-04, D-13) | el golden normaliza; no se copian los errores |
+
+---
+
+## 5. Cierre de la Fase 1 — resultado real y desviaciones
+
+Implementada y medida contra `Referencias/3-Hoja de trabajo Rtefte Oct.2026.xlsm`.
+
+### Resultado
+
+- **133 pruebas pasando** (`.venv\Scripts\python.exe -m pytest`).
+- Golden de estructura y valores: **12 pruebas, todas verdes**. Se ejecutaron contra la referencia
+  real; la suite completa deja de contar con `test_recalculo.py` (2 pruebas que se salta sin
+  LibreOffice).
+- Aceptación sobre la referencia #3: **89 documentos**, total `36.190.379,92`, suma de bloques
+  cuadra, estructura de los 4 bloques idéntica.
+
+### Desviaciones aceptadas sobre el plan original
+
+| # | Desviación | Decisión |
+|---|---|---|
+| 1 | El `Dian` se reutiliza el libro original en vez de copiar celda por celda | D-21 |
+| 2 | El fixture sintético se genera en memoria en vez de versionarse binario | D-25 |
+| 3 | El golden compara bloques como multiconjunto | D-22 |
+| 4 | El golden salta/ignora el cliente real (NIT anonimizado) | D-23 |
+| 5 | La referencia #3 trae INC real; C7 bloquea | D-24 |
+| 6 | El escritor se invoca directamente en el golden para comparar | D-24 |
+| 7 | Estilos con correcciones medidas (título 11 pt, dinero 11 pt, anchos uniformes) | D-27 |
+| 8 | `''` y `None` en celdas vacías se consideran iguales | D-28 |
+| 9 | Recálculo con LibreOffice: se salta si no está instalado | D-29 |
+
+### Criterios de aceptación — estado
+
+1. ✅ Estructura, valores y totales coinciden: **sí** para la hoja generada (el golden es verde).
+2. ⚠️ **Cuadres**: C1, C2, C3, C4, C5 **sí** pasan sobre la referencia #3; C6 no se puede validar
+   (anónimo, D-23); C7 **falla y debe fallar**, porque la referencia #3 trae dos facturas con INC
+   real (D-24). El bloqueo de exportación es el comportamiento correcto.
+3. ⚠️ Recálculo: la prueba existe (`test_recalculo.py`) pero **se salta en esta máquina** porque no
+   hay LibreOffice. Es el único criterio pendiente de verificación mecánica.
+
+### Próximo paso
+
+Sin interfaz, sin retefuente, sin SQLite. **Listo para pasar a la Fase 2** (interfaz PySide6).
+
+---

@@ -307,6 +307,133 @@ Regla 10: nunca datos reales en el repositorio.
 
 ---
 
+## D-21. Conservar `Dian` reutilizando el libro original
+
+Copiar la hoja celda por celda es frágil: se pierden estilos, anchos, combinaciones, validaciones y
+detalles que openpyxl no expone con comodidad.
+
+**Decisión:** el escritor **abre el listado original**, borra las demás hojas, renombra la primera
+como `Dian`, limpia `defined_names` y `_external_links` (apuntaban a hojas borradas y producirían
+`#REF!`), marca `calculation.fullCalcOnLoad = True` y guarda. Así la pestaña queda intacta de verdad.
+El listado de entrada nunca se sobrescribe: el escritor falla si `destino` es el mismo archivo.
+
+**Efecto secundario aceptado:** al releer el `.xlsx`, openpyxl convierte las cadenas vacías `''` en
+`None` (D-28). Para Excel ambas son celdas vacías.
+
+---
+
+## D-22. Orden de los documentos y comparación golden
+
+`AGENTS.md` pide orden por fecha de emisión descendente en `Compras`, pero la hoja de referencia no
+lo cumple de forma estricta y `Sumatorias` tampoco sigue el orden del listado.
+
+**Decisión:**
+
+- La app **sí** ordena cada bloque por `fecha_emision` descendente, con orden estable por índice del
+  listado cuando hay fechas iguales. Es el criterio único de la sección 4.4.
+- El golden **no** compara orden de filas: compara los documentos de cada bloque como
+  **multiconjunto** (mismo contenido, cualquier orden). Comparar el orden haría fallar la prueba por
+  una diferencia que `AGENTS.md` no exige y que la referencia tampoco respeta.
+
+---
+
+## D-23. Las referencias están anonimizadas
+
+En las tres hojas de `Referencias/`, las columnas de NIT y nombres de los documentos vienen como
+`x`. La cabecera de `Sumatorias` de la referencia #3 sí conserva el cliente real
+(`JHONY WALTER CHAVARRIA BETANCOURT`, `NIT. 1.020.396.459`); las referencias #1 y #2 no traen
+cabecera.
+
+**Consecuencia:** el cuadre C6 («el cliente aparece en el listado») **no se puede validar** sobre
+estas referencias, porque la identificación real no existe en los datos. La prueba golden:
+
+- lee el cliente de la cabecera cuando está; si no, usa un cliente de prueba,
+- comprueba que C6 falla con un detalle claro (es lo correcto: el dato no está),
+- valida C1 a C5, que sí son independientes de los NIT.
+
+No se relaja la regla C6 ni se inventan NIT para que pase.
+
+---
+
+## D-24. La referencia #3 trae dos facturas con impuestos distintos de IVA
+
+La referencia #3 contiene dos documentos reales con impuesto distinto de IVA:
+
+| Documento | Impuesto | Valor |
+|---|---|---|
+| `05LB-235797` | INC Bolsas | 219,00 |
+| `FCPT-35167450` | INC | 220,53 |
+
+Aplicando D-19, la app **bloquea la exportación** de ese mes y lista ambos documentos. Es el
+comportamiento pedido, aunque la hoja de referencia se haya preparado a mano sin corregirlo.
+
+**Decisión para el golden:** la comparación estructural se hace llamando al escritor directamente,
+sin pasar por `exportar_hoja` (que aquí bloquea a propósito). La prueba además verifica que:
+
+- C7 falla y menciona exactamente esos dos folios y sus valores,
+- `puede_exportar` es `False` y los cuadres fallidos son exactamente `{C6, C7}`.
+
+Así se demuestra que la estructura coincide **y** que la app se niega a exportar en silencio.
+
+---
+
+## D-25. Fixture sintético generado en memoria
+
+El listado de prueba no se versiona como `.xlsx` binario. `tests/herramientas/listado_sintetico.py`
+lo construye con openpyxl y lo guarda en una carpeta temporal (`tmp_path`), con datos inventados.
+Ventajas: no hay binarios opacos en el repositorio, se puede variar por prueba (duplicado, fecha
+fuera de periodo, documento desconocido, otros impuestos) y se lee exactamente igual que un archivo
+descargado de la DIAN.
+
+---
+
+## D-26. Cascada de C1, C2 y C4 con documentos sin clasificar
+
+Cuando un documento queda en `SIN_CLASIFICAR`, además de C1 fallan C2 y C4: no llega a ningún
+bloque, así que la suma de bloques ya no iguala el total de la DIAN. No es un defecto, es la
+consecuencia correcta de no descartar nada.
+
+**Decisión:** las pruebas afirman que C1 está entre los cuadres fallidos y que el documento aparece
+en `no_clasificados`, sin exigir que sea el único código. La interfaz mostrará todos los cuadres
+fallidos, no solo el primero.
+
+---
+
+## D-27. Corrección de estilos medidos
+
+Al medir la referencia (D-16) se corrigieron tres detalles:
+
+- El título general (`REVISION DEL TOTAL...`) va en **11 pt negrita**, no 13.
+- Las celdas de dinero (IVA, Total Neto, Total) van en **11 pt**, un punto más que el resto de la fila.
+- Los **anchos de columna son iguales en `Sumatorias`, `Ventas` y `Compras`**. La referencia los tenía
+  inconsistentes entre pestañas; la app usa una sola tabla de anchos para que las tres se vean igual.
+
+Todo esto es cosmético: el golden no compara fuentes, colores ni anchos (D-14).
+
+---
+
+## D-28. Celdas vacías `''` frente a `None` en la copia de `Dian`
+
+La referencia guarda algunas celdas como **cadena vacía** (`''`) y otras como celda realmente vacía
+(`None`). Al abrir y volver a guardar con openpyxl, las cadenas vacías quedan como `None`.
+
+**Decisión:** el golden considera equivalentes `None` y `''` al comparar la pestaña `Dian`. Para
+Excel son la misma celda vacía y no hay pérdida de información. Cualquier otro cambio de valor sí
+falla la prueba.
+
+---
+
+## D-29. Prueba de recálculo real
+
+`tests/test_recalculo.py` abre el archivo generado con LibreOffice en modo `--headless`, lo convierte
+a `.xlsx` (forzando el recálculo) y verifica que no haya `#REF!`, `#VALUE!`, `#NAME?` ni errores
+similares. También comprueba que los totales recalculados cuadren y que `Total Neto = Total − IVA`.
+
+Si LibreOffice no está instalado, la prueba **se salta** con un mensaje explícito; no se simula el
+resultado. En esta máquina no está instalado, así que hoy se ejecuta como `skip`.
+
+---
+
 ## Resumen de lo que necesito de ti
 
 | # | Decisión | Estado |
@@ -331,5 +458,14 @@ Regla 10: nunca datos reales en el repositorio.
 | D-18 | YAML de UVT, bases y tarifas 2026 | ⚠ **pendiente** — bloquea solo la Fase 3 |
 | D-19 | Impuestos distintos de IVA ≠ 0 | **aprobada**: bloquear la exportación |
 | D-20 | Privacidad y fixtures | aprobada |
+| D-21 | Copia de `Dian` reutilizando el libro original | aprobada |
+| D-22 | Orden por fecha y golden como multiconjunto | aprobada |
+| D-23 | Referencias anonimizadas: C6 no se puede validar | aprobada |
+| D-24 | Referencia #3 con INC real: C7 bloquea | aprobada |
+| D-25 | Fixture sintético generado en memoria | aprobada |
+| D-26 | Cascada C1/C2/C4 con `SIN_CLASIFICAR` | aprobada |
+| D-27 | Corrección de estilos medidos | aprobada |
+| D-28 | `''` y `None` equivalentes en la copia de `Dian` | aprobada |
+| D-29 | Recálculo con LibreOffice (se salta si no está) | aprobada |
 
 Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.

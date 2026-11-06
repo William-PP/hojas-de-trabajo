@@ -40,8 +40,8 @@ En las referencias son **valores booleanos** en A y B (encabezados en A5/B5), no
 Las referencias traen combinaciones humanas (`FALSE/FALSE`, `FALSE/TRUE`), así que **la comparación
 golden ignora las columnas A y B**.
 
-**Estado:** ⚠ pendiente. Si prefieres que la app emita `FALSE/FALSE` y el usuario marque todo,
-se cambia en una línea.
+**Estado:** aprobada por defecto (propuesta adoptada). Si prefieres `FALSE/FALSE` y que el usuario
+marque todo, se cambia en una línea.
 
 ---
 
@@ -86,7 +86,7 @@ bloque, lo pone **inmediatamente después de ventas**.
 
 **Propuesta:** `VENTAS` → `DEVOLUCIONES EN VENTAS` (si hay) → `COMPRAS` → `DEVOLUCIONES EN COMPRAS` → `NOMINA`.
 
-**Estado:** ⚠ pendiente (adopto la referencia real, no la tabla del `.md`).
+**Estado:** aprobada por defecto (propuesta adoptada, la referencia real manda sobre la tabla del `.md`).
 
 ---
 
@@ -129,7 +129,8 @@ prohíbe).
   excluido con su motivo, y el usuario puede revisarlo.
 - El cuadre 1 pasa a: `filas de Sumatorias + excluidos justificados = filas de Dian`.
 
-**Estado:** ⚠ pendiente — es la decisión más importante de la revisión.
+**Estado:** aprobada. `RESPUESTA_DIAN` se excluye de las hojas y se lista en el resumen como
+documento excluido con su motivo. El cuadre C1 suma los excluidos justificados.
 
 ---
 
@@ -155,7 +156,7 @@ y el proceso manual lo metió en `Compras`.
 La columna `Grupo` se conserva y el cuadre 6 (identificación del cliente) se resuelve por
 emisor **o** receptor, sin exigir cuál.
 
-**Estado:** ⚠ pendiente.
+**Estado:** aprobada. Ambos grupos van a `COMPRA` y se conserva la columna `Grupo`.
 
 ---
 
@@ -194,8 +195,8 @@ Además el rango incluye filas de título y de total, que el filtro ocultaría.
 no inventar un comportamiento distinto) y **recalcularlo siempre**. El golden compara solo celda
 inicial y presencia del filtro, no la fila final.
 
-**Estado:** ⚠ pendiente. Alternativa: filtrar solo la tabla de documentos, dejando fuera títulos y
-totales — más limpio, pero se aparta de la referencia.
+**Estado:** aprobada por defecto. Alternativa si prefieres: filtrar solo la tabla de documentos,
+dejando fuera títulos y totales — más limpio, pero se aparta de la referencia.
 
 ---
 
@@ -230,7 +231,7 @@ dice `1.020.434.199` sin el prefijo `NIT.`.
   para persona natural, `CC. 1.020.396.459`.
 - Fila 3: `LISTADO DOCUMENTOS ELECTRONICOS DIAN {MES} {AÑO}` en mayúsculas y sin doble espacio.
 
-**Estado:** ⚠ pendiente solo en el prefijo `NIT.` / `CC.`.
+**Estado:** aprobada por defecto solo en el prefijo `NIT.` / `CC.`.
 
 ---
 
@@ -259,7 +260,7 @@ La guía dice "no crees pestañas vacías sin necesidad", pero el estándar de s
 "El listado del mes no tiene documentos" y deja al usuario decidir. Es más honesto que un archivo
 vacío que luego se confunde con un mes trabajado.
 
-**Estado:** ⚠ pendiente.
+**Estado:** aprobada. Si el listado no trae filas, no se genera archivo y se avisa.
 
 ---
 
@@ -286,7 +287,8 @@ degrada sin avisar.
 **Propuesta:** validar al leer. Si la suma de impuestos distintos de IVA es ≠ 0, la app **no exporta**
 y muestra la lista de documentos afectados. Es preferible a un neto silenciosamente incorrecto.
 
-**Estado:** ⚠ pendiente (alternativa: conservar esas columnas en la hoja).
+**Estado:** aprobada. Si la suma es distinta de cero, la app no exporta y lista los documentos
+afectados. Cuadre C7.
 
 ---
 
@@ -307,14 +309,27 @@ Regla 10: nunca datos reales en el repositorio.
 
 ## Resumen de lo que necesito de ti
 
-| # | Decisión | Impacto si no responde |
+| # | Decisión | Estado |
 |---|---|---|
-| D-02 | ¿La app marca `DIAN=TRUE` o deja ambas en `FALSE`? | cosmético, se cambia fácil |
-| D-05 | Orden de `DEVOLUCIONES EN VENTAS` | bajo |
-| D-08 | Tratamiento de `Application response` | **alto** (afecta cuadre 1) |
-| D-10 | `Documento soporte` recibido | medio |
-| D-13 | Rango del autofiltro | bajo |
-| D-15 | Prefijo `NIT.` / `CC.` en la fila 2 | bajo |
-| D-17 | Comportamiento con mes vacío | medio |
-| D-18 | YAML de UVT, bases y tarifas 2026 | **bloquea Fase 3** |
-| D-19 | Impuestos distintos de IVA ≠ 0 | medio |
+| D-01 | Nombre del archivo | aprobada (ejemplo de `AGENTS.md`) |
+| D-02 | ¿La app marca `DIAN=TRUE` o deja ambas en `FALSE`? | aprobada por defecto: `TRUE/FALSE` |
+| D-03 | Fórmulas en inglés dentro del `.xlsx` | aprobada |
+| D-04 | Literales canónicos de bloques y totales | aprobada |
+| D-05 | Orden de `DEVOLUCIONES EN VENTAS` | aprobada por defecto: junto a ventas |
+| D-06 | Siempre `SUM` con rango | aprobada |
+| D-07 | `Retefuente` sin golden file | informativa |
+| D-08 | `Application response` | **aprobada**: categoría propia, excluida y reportada |
+| D-09 | `Documento equivalente` por prefijo | aprobada |
+| D-10 | `Documento soporte` recibido | **aprobada**: compra en ambos grupos |
+| D-11 | Estados incluidos | aprobada |
+| D-12 | Signo de las notas crédito | aprobada (confirmada con la referencia) |
+| D-13 | Rango del autofiltro | aprobada por defecto: `C4:T{última}` |
+| D-14 | Criterio de comparación golden | aprobada |
+| D-15 | Prefijo `NIT.` / `CC.` | aprobada por defecto |
+| D-16 | Estilos visuales | aprobada |
+| D-17 | Mes sin documentos | **aprobada**: no exportar y avisar |
+| D-18 | YAML de UVT, bases y tarifas 2026 | ⚠ **pendiente** — bloquea solo la Fase 3 |
+| D-19 | Impuestos distintos de IVA ≠ 0 | **aprobada**: bloquear la exportación |
+| D-20 | Privacidad y fixtures | aprobada |
+
+Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.

@@ -296,5 +296,5 @@ Cada paso con su commit. Al final: resumen, cuadres en verde y espera de aprobac
 | El listado real trae tipos de documento nuevos | `SIN_CLASIFICAR` visible y reportado; nunca se descarta |
 | El `Dian` de origen tiene formato raro (filas 1000, estilos) | se copia celda a celda, sin reinterpretar |
 | Redondeos de 1 centavo | comparación con tolerancia de 0,01 solo en C2 |
-| `Application response` (D-08) sin decidir | mientras no se apruebe, cae en `SIN_CLASIFICAR` y el cuadre C1 falla; es visible, no silencioso |
+| `Application response` (D-08) ya decidido | categoría `RESPUESTA_DIAN`, excluida de las hojas y contada en C1 como excluido justificado |
 | La hoja de referencia tiene errores propios (D-04, D-13) | el golden normaliza; no se copian los errores |

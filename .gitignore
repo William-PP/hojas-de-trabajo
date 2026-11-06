@@ -1,0 +1,19 @@
+# Entorno
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Datos de clientes: NUNCA versionar (regla 10 de AGENTS.md)
+Referencias/
+*.xlsm
+
+# Salidas generadas
+salidas/
+*.log

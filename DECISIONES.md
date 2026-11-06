@@ -1,0 +1,320 @@
+# Decisiones de diseño
+
+Registro de decisiones tomadas al revisar `AGENTS.md`, la guía y las **tres hojas de referencia**.
+Cada punto tiene una propuesta concreta. Los marcados **⚠ pendiente** necesitan tu aprobación
+antes de escribir el código de la Fase 1.
+
+Convención: `R-A` = referencia de 52 documentos (oct), `R-B` = referencia de 53 (sep),
+`R-C` = referencia de 89 (oct, la que usa `AGENTS.md` como fuente de verdad).
+
+---
+
+## D-01. Nombre del archivo de salida
+
+`AGENTS.md` §4.6 dice `[Mes abrev]`, la guía dice `[Mes]`; las referencias reales se llaman
+`1-Hoja de trabajo Rtefte Oct.2026 .xlsm` (con espacios, punto y espacio final).
+
+**Propuesta:** seguir el ejemplo de `AGENTS.md` al pie de la letra:
+
+```
+10-Hoja_de_trabajo_Rtefte_Oct_2026_Nombre_Cliente.xlsx
+```
+
+Mes abreviado en español de 3 letras: `Ene, Feb, Mar, Abr, May, Jun, Jul, Ago, Sep, Oct, Nov, Dic`.
+Sin espacios, sin punto, sin espacio final. Carpetas destino: las que defina el usuario.
+
+**Estado:** aprobada salvo que prefieras `Octubre` completo.
+
+---
+
+## D-02. Columnas A/B (`DIAN` / `FISICA`) en `Ventas` y `Compras`
+
+`AGENTS.md` habla de celdas booleanas; la guía habla de "casillas de verificación".
+En las referencias son **valores booleanos** en A y B (encabezados en A5/B5), no controles de formulario.
+
+**Propuesta:** escribir `TRUE`/`FALSE` reales (no checkbox). Al generar:
+
+- `DIAN = TRUE` (el documento viene del listado, por definición).
+- `FISICA = FALSE` (queda pendiente de que el usuario lo verifique contra el soporte).
+
+Las referencias traen combinaciones humanas (`FALSE/FALSE`, `FALSE/TRUE`), así que **la comparación
+golden ignora las columnas A y B**.
+
+**Estado:** ⚠ pendiente. Si prefieres que la app emita `FALSE/FALSE` y el usuario marque todo,
+se cambia en una línea.
+
+---
+
+## D-03. Nombres de fórmulas dentro del `.xlsx`
+
+La guía y `AGENTS.md` escriben `=SI(...)`, `=SUMAR.SI(...)`. Excel guarda las fórmulas en inglés;
+`=SI(...)` escrito por openpyxl produce `#NAME?`.
+
+**Propuesta:** el archivo lleva `SUM`, `IF`, `SUMIF`, `ROUND`. El español queda solo en la
+documentación y en los mensajes al usuario.
+
+**Estado:** aprobada (es un requisito técnico, no una preferencia).
+
+---
+
+## D-04. Nombres canónicos de bloques y etiquetas
+
+Las referencias son inconsistentes entre sí: `TOTAL FACTURA VENTAS` (R-B) vs `TOTAL FACTURAS VENTAS`
+(R-C), `TOTAL FACTURAS COMPRAS` (R-B) vs `TOTAL FACTURAS DE COMPRAS` (R-C),
+`DEVOLUCIONES EN VENTA` (R-A) vs `DEVOLUCIONES EN VENTAS`, y `NOMINA  ` / `TOTAL NOMINA `
+con espacios finales.
+
+**Propuesta:** un solo juego de literales, sin espacios sobrantes:
+
+| Título del bloque | Etiqueta del total |
+|---|---|
+| `FACTURAS DE VENTAS` | `TOTAL FACTURAS VENTAS` |
+| `DEVOLUCIONES EN VENTAS` | `TOTAL DEVOLUCIONES EN VENTAS` |
+| `FACTURAS DE COMPRAS` | `TOTAL FACTURAS DE COMPRAS` |
+| `DEVOLUCIONES EN COMPRAS` | `TOTAL DEVOLUCIONES EN COMPRAS` |
+| `NOMINA` | `TOTAL NOMINA` |
+| `REVISION DEL TOTAL DE DOCUMENTOS Y SUMATORIAS` | (título general, fila 5 de `Sumatorias`) |
+
+**Estado:** aprobada (normaliza, no cambia contenido).
+
+---
+
+## D-05. Orden de los bloques en `Sumatorias`
+
+`AGENTS.md` lista `DEVOLUCIONES EN VENTAS` al final ("si hay"). `R-A`, que es la única que tiene ese
+bloque, lo pone **inmediatamente después de ventas**.
+
+**Propuesta:** `VENTAS` → `DEVOLUCIONES EN VENTAS` (si hay) → `COMPRAS` → `DEVOLUCIONES EN COMPRAS` → `NOMINA`.
+
+**Estado:** ⚠ pendiente (adopto la referencia real, no la tabla del `.md`).
+
+---
+
+## D-06. Estilo de las fórmulas de total
+
+Las referencias mezclan tres estilos en el mismo archivo: `=P8`, `=SUM(P13:P96)` y `=P101+P102+P103`.
+
+**Propuesta:** **siempre** `SUM` con rango, incluso para una sola fila: `=SUM(P8:P8)`.
+Nunca sumas celda por celda (regla 12). El resultado numérico es idéntico, así que el golden
+compara **valores**, no texto de fórmula.
+
+**Estado:** aprobada.
+
+---
+
+## D-07. Pestaña `Retefuente [Mes]`
+
+Ninguna de las tres referencias tiene esa pestaña: las hojas reales terminan en `Compras`.
+No hay golden file para Retefuente.
+
+**Propuesta:** en Fase 3 la pestaña se valida con pruebas unitarias del motor y con una revisión
+tuya sobre un caso real; no se compara contra referencia. Y cuando tengamos una hoja con Retefuente
+ya trabajada, se agrega como cuarta referencia.
+
+**Estado:** informativa.
+
+---
+
+## D-08. Tipo de documento `Application response` ⚠ hallazgo importante
+
+`R-A` trae **un** documento con tipo `Application response` (Grupo `Recibido`, Estado `Aprobado`).
+No es una compra ni una venta: es la respuesta de la DIAN a un evento. En `R-A` hay 52 filas en
+`Dian` y solo 51 en `Sumatorias`: **el proceso manual lo borró en silencio** (justo lo que la regla 3
+prohíbe).
+
+**Propuesta:**
+
+- Nueva categoría `RESPUESTA_DIAN` en el enum `Categoria`, con `incluir_en_hoja = False`.
+- No entra en `Sumatorias` ni en las demás pestañas, pero **se lista en el resumen** como documento
+  excluido con su motivo, y el usuario puede revisarlo.
+- El cuadre 1 pasa a: `filas de Sumatorias + excluidos justificados = filas de Dian`.
+
+**Estado:** ⚠ pendiente — es la decisión más importante de la revisión.
+
+---
+
+## D-09. Tipo `Documento equivalente`
+
+El nombre real es `Documento equivalente - Servicios públicos domiciliarios`, no
+`Documento equivalente`. Comparar por igualdad exacta lo mandaría a `SIN_CLASIFICAR`.
+
+**Propuesta:** el clasificador compara **normalizado** (sin tildes, minúsculas, espacios colapsados)
+y por **prefijo** para `documento equivalente`. Igual criterio para `documento soporte`
+(`Documento soporte con no obligados`).
+
+**Estado:** aprobada.
+
+---
+
+## D-10. `Documento soporte` con Grupo `Recibido`
+
+`AGENTS.md` solo contempla `Documento soporte` + `Emitido` → `COMPRA`. `R-B` trae uno **recibido**
+y el proceso manual lo metió en `Compras`.
+
+**Propuesta:** `Documento soporte` → `COMPRA` con **cualquiera** de los dos grupos.
+La columna `Grupo` se conserva y el cuadre 6 (identificación del cliente) se resuelve por
+emisor **o** receptor, sin exigir cuál.
+
+**Estado:** ⚠ pendiente.
+
+---
+
+## D-11. Estado del documento
+
+En las referencias solo aparecen `Aprobado` y `Aprobado con notificación`, y **ambos se incluyen**.
+
+**Propuesta:** incluir los dos. Cualquier otro estado queda en `SIN_CLASIFICAR` con alerta
+(no se descarta).
+
+**Estado:** aprobada.
+
+---
+
+## D-12. Signo de las notas crédito
+
+Hallazgo: en `R-C` las tres notas crédito tienen `Total` **positivo** (650.001,80 / 58.899,98 / 78.000,00)
+y el bloque `DEVOLUCIONES EN COMPRAS` los suma en positivo. La suma de los cuatro bloques da
+exactamente 36.190.379,92, igual al total de `Dian`.
+
+**Propuesta:** en `Sumatorias`, `Ventas` y `Compras` **no se invierte el signo**; se copia tal como
+viene de la DIAN y el cuadre 2 es la suma directa de bloques. El signo negativo se aplica **solo en
+Retefuente**, donde la nota crédito resta de la base del concepto.
+
+**Estado:** aprobada (confirmada contra la referencia).
+
+---
+
+## D-13. Rango del autofiltro
+
+En las referencias el autofiltro quedó desactualizado: `R-C` filtra `C4:T102` con datos hasta la
+fila 109; `R-B` filtra `C4:T70` (correcto); `R-A` filtra `C4:T65` con datos hasta 78.
+Además el rango incluye filas de título y de total, que el filtro ocultaría.
+
+**Propuesta:** generar `C4:T{última fila con datos}` (incluye totales, igual que la referencia, para
+no inventar un comportamiento distinto) y **recalcularlo siempre**. El golden compara solo celda
+inicial y presencia del filtro, no la fila final.
+
+**Estado:** ⚠ pendiente. Alternativa: filtrar solo la tabla de documentos, dejando fuera títulos y
+totales — más limpio, pero se aparta de la referencia.
+
+---
+
+## D-14. Cómo se compara contra la referencia (golden)
+
+Comparar texto de fórmula es frágil (D-06) y las columnas A/B son marcas humanas (D-02).
+
+**Propuesta:** la prueba de integración compara, hoja por hoja:
+
+1. Nombre y orden de las pestañas.
+2. Encabezados de fila 4 (C..T) y celdas combinadas normalizadas a `E1:S1`, `E2:S2`, `E3:S3`.
+3. Secuencia de filas: tipo (título de bloque / datos / total) y etiqueta de cada fila.
+4. Valores numéricos de P, Q y R por fila y por total de bloque.
+5. Texto de las celdas de datos C..T (incluye CUFE, folio, fechas, nombres).
+6. `freeze_panes` y celda inicial del autofiltro.
+
+Ignora: columnas A/B, texto exacto de fórmulas, anchos, colores y la fila 1000 vacía de `Dian`.
+
+**Estado:** aprobada.
+
+---
+
+## D-15. Encabezado de las filas 1–3
+
+`R-A` y `R-C` combinan `E1:S1`, `E2:S2`, `E3:S3`; `R-B` combina `D1:V1` (error manual) y su fila 2
+dice `1.020.434.199` sin el prefijo `NIT.`.
+
+**Propuesta:** siempre `E1:S1` / `E2:S2` / `E3:S3`, con:
+
+- Fila 1: nombre del cliente.
+- Fila 2: `NIT. 901.320.747-4` (con puntos de miles y dígito de verificación si existe);
+  para persona natural, `CC. 1.020.396.459`.
+- Fila 3: `LISTADO DOCUMENTOS ELECTRONICOS DIAN {MES} {AÑO}` en mayúsculas y sin doble espacio.
+
+**Estado:** ⚠ pendiente solo en el prefijo `NIT.` / `CC.`.
+
+---
+
+## D-16. Estilos visuales
+
+Medidos en `R-C`:
+
+- Encabezado (fila 4): negrita, Calibri 10, texto blanco, relleno `#348441`, centrado.
+- Título general y títulos de bloque: negrita, relleno `#DBE5F1`; el título general de `Sumatorias`
+  a 13 pt.
+- Columnas P, Q, R: formato `"$"\ #,##0;[Red]\-"$"\ #,##0` (moneda sin decimales).
+- Anchos (C..T): `8.7, 13, 13, 13, 13, 13, 13, 13, 13, 13, 35.6, 8.7, 35.6, 12.1, 13.9, 12.7, 8.7, 13`.
+
+**Propuesta:** fijar estos valores en el escritor como constantes de estilo. El golden no los compara
+(son cosméticos), pero así la salida se ve igual a la hoja que ya usas.
+
+**Estado:** aprobada.
+
+---
+
+## D-17. Mes sin movimiento
+
+La guía dice "no crees pestañas vacías sin necesidad", pero el estándar de salida son 5 pestañas.
+
+**Propuesta:** si el listado viene sin filas, la app **no exporta**: muestra el aviso
+"El listado del mes no tiene documentos" y deja al usuario decidir. Es más honesto que un archivo
+vacío que luego se confunde con un mes trabajado.
+
+**Estado:** ⚠ pendiente.
+
+---
+
+## D-18. UVT y bases mínimas en `Retefuente`
+
+La tabla de trabajo solo tiene "Base mínima (UVT)". Para decidir si la factura supera el mínimo hay
+que comparar pesos contra pesos, así que falta la UVT del año.
+
+**Propuesta:** el YAML por año trae `uvt_pesos` y, por concepto, `base_minima_uvt` y `tarifa`.
+El escritor agrega dos columnas derivadas: `Base mínima (pesos) = uvt * base_minima_uvt` y
+`Retención = IF(base >= base_minima_pesos, base * tarifa, 0)`.
+Si falta cualquier dato del concepto, la app no genera la pestaña y dice qué clave falta.
+
+**Estado:** ⚠ pendiente (depende de que me pases el YAML de 2026).
+
+---
+
+## D-19. Impuestos distintos de IVA
+
+`AGENTS.md` conserva solo `IVA` y `Total`. Si en un mes `ICA`, `INC`, `Timbre` o similares vienen
+distintos de cero, `Total Neto = Total − IVA` deja de ser el valor antes de IVA y el cuadre se
+degrada sin avisar.
+
+**Propuesta:** validar al leer. Si la suma de impuestos distintos de IVA es ≠ 0, la app **no exporta**
+y muestra la lista de documentos afectados. Es preferible a un neto silenciosamente incorrecto.
+
+**Estado:** ⚠ pendiente (alternativa: conservar esas columnas en la hoja).
+
+---
+
+## D-20. Privacidad y fixtures
+
+Regla 10: nunca datos reales en el repositorio.
+
+**Propuesta:**
+
+- `Referencias/` va en `.gitignore` (ya está) y nunca se versiona.
+- `tests/fixtures/` solo lleva archivos **sintéticos** o **anonimizados**.
+- La prueba golden contra las tres referencias reales existe, pero está marcada `@referencias` y
+  se salta sola si la carpeta no está (por ejemplo en otra máquina o en CI).
+
+**Estado:** aprobada.
+
+---
+
+## Resumen de lo que necesito de ti
+
+| # | Decisión | Impacto si no responde |
+|---|---|---|
+| D-02 | ¿La app marca `DIAN=TRUE` o deja ambas en `FALSE`? | cosmético, se cambia fácil |
+| D-05 | Orden de `DEVOLUCIONES EN VENTAS` | bajo |
+| D-08 | Tratamiento de `Application response` | **alto** (afecta cuadre 1) |
+| D-10 | `Documento soporte` recibido | medio |
+| D-13 | Rango del autofiltro | bajo |
+| D-15 | Prefijo `NIT.` / `CC.` en la fila 2 | bajo |
+| D-17 | Comportamiento con mes vacío | medio |
+| D-18 | YAML de UVT, bases y tarifas 2026 | **bloquea Fase 3** |
+| D-19 | Impuestos distintos de IVA ≠ 0 | medio |

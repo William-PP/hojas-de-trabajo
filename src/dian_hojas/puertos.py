@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Collection, Protocol
 
 from dian_hojas.dominio.modelos import (
     Cliente,
@@ -30,6 +30,8 @@ class EscritorHoja(Protocol):
         destino: Path,
         *,
         ruta_listado: Path,
+        retefuente: object | None = None,
+        soportes_verificados: Collection[str] | None = None,
     ) -> Path: ...
 
 
@@ -39,3 +41,9 @@ class RepositorioProveedores(Protocol):
     def concepto_de_proveedor(self, nit: str) -> str | None: ...
 
     def asignar_concepto(self, nit: str, concepto: str) -> None: ...
+
+
+class OcrProveedor(Protocol):
+    """Extrae texto de un soporte físico (PDF o imagen). Es opcional en la aplicación."""
+
+    def extraer_texto(self, ruta: Path) -> str: ...

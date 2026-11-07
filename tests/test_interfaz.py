@@ -151,3 +151,87 @@ def test_hilo_procesar_reporta_error_con_ruta_inexistente(qtbot, tmp_path):
     trabajo.trabajar()
     qtbot.waitSignal(trabajo.termino, timeout=10000)
     assert errores
+
+
+# --- Fase 4: configuración tributaria, perfiles y OCR opcional --------------------------
+
+
+def test_dialogo_configuracion_carga_y_guarda(qtbot, tmp_path):
+    from decimal import Decimal
+
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+    from dian_hojas.reglas.configuracion import cargar_configuracion
+
+    ruta = _config_retefuente(tmp_path)
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+
+    dialogo.cargar_archivo(ruta)
+    assert dialogo.campo_uvt.text() == "220000"
+    assert dialogo.tabla.item(0, 1).text() == "1"
+    assert dialogo.tabla.item(0, 2).text() == "0.05"
+
+    dialogo.campo_uvt.setText("230000")
+    dialogo.tabla.item(0, 2).setText("0.10")
+    guardada = dialogo.guardar()
+
+    assert guardada == ruta
+    configuracion = cargar_configuracion(2026, ruta)
+    assert configuracion.uvt_pesos == Decimal("230000")
+    assert configuracion.conceptos["compras"].tarifa == Decimal("0.10")
+
+
+def test_dialogo_configuracion_no_guarda_si_falta_un_dato(qtbot, tmp_path):
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+    from dian_hojas.reglas.configuracion import ErrorConfiguracion
+
+    ruta = _config_retefuente(tmp_path)
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+    dialogo.cargar_archivo(ruta)
+    dialogo.campo_uvt.setText("")
+
+    with pytest.raises(ErrorConfiguracion):
+        dialogo.guardar()
+    assert "220000" in ruta.read_text(encoding="utf-8")
+
+
+def test_ventana_guarda_perfil_y_lo_recupera(qtbot, tmp_path):
+    ventana = VentanaPrincipal()
+    qtbot.addWidget(ventana)
+    ventana._repo = RepoSqlite(tmp_path / "memoria.sqlite")
+    ventana._campo_nombre.setText("Cliente Perfil")
+    ventana._campo_nit.setText("1020396459")
+    ventana._campo_carpeta.setText(str(tmp_path / "salida"))
+
+    ventana._guardar_perfil()
+
+    assert ventana.combo_perfiles.count() == 1
+    ventana._campo_nombre.setText("")
+    ventana._on_perfil_cambiado(0)
+    assert ventana._campo_nombre.text() == "Cliente Perfil"
+    assert ventana._campo_nit.text() == "1020396459"
+
+
+def test_ventana_verifica_soportes_si_el_usuario_quiere(qtbot, tmp_path, ruta_listado_sintetico):
+    from dian_hojas.dominio.enums import Categoria
+    from dian_hojas.infraestructura.ocr import Ocr
+
+    ventana = VentanaPrincipal()
+    qtbot.addWidget(ventana)
+    _configurar_procesamiento_en_ventana(ventana, tmp_path, ruta_listado_sintetico)
+    trabajo = ventana.trabajo
+    qtbot.waitSignal(trabajo.termino, timeout=10000)
+    qtbot.wait(500)
+
+    compra = next(
+        d for d in ventana._proceso.resultado.documentos if d.categoria is Categoria.COMPRA
+    )
+    soporte = tmp_path / "soporte.pdf"
+    soporte.write_bytes(b"contenido simulado")
+    ventana._ocr = Ocr(motor=lambda _ruta: f"Factura electronica {compra.cufe}")
+
+    ventana.verificar_soportes([soporte])
+
+    assert compra.cufe in ventana.soportes_verificados
+    assert "1" in ventana._estado.text()

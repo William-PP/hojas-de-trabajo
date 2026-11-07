@@ -26,11 +26,16 @@ from dian_hojas.aplicacion.exportar_hoja import ExportacionBloqueada, exportar_h
 from dian_hojas.aplicacion.procesar_mes import ResultadoProcesamiento
 from dian_hojas.aplicacion.sugerir_retefuente import sugerir_retefuente
 from dian_hojas.dominio.enums import Categoria
-from dian_hojas.dominio.modelos import Cliente, Periodo
+from dian_hojas.dominio.modelos import Cliente, PerfilCliente, Periodo
+from dian_hojas.dominio.retefuente import RetefuenteMes
+from dian_hojas.dominio.soportes import documentos_en_texto
 from dian_hojas.interfaz.viewmodels.procesar import HiloProcesar
+from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
 from dian_hojas.infraestructura.config_yaml import ConfigYaml
 from dian_hojas.infraestructura.escritor_xlsx import EscritorOpenpyxl
+from dian_hojas.infraestructura.ocr import ErrorOcr, Ocr
 from dian_hojas.infraestructura.repo_sqlite import RepoSqlite
+from dian_hojas.rutas import directorio_datos, directorio_reglas
 
 CODIGOS_CUADRES = (
     ("C1", "Cantidad de documentos"),
@@ -60,6 +65,8 @@ class VentanaPrincipal(QMainWindow):
         self._error: str | None = None
         self._hilo_procesar: QThread | None = None
         self._trabajo: HiloProcesar | None = None
+        self._soportes_verificados: set[str] = set()
+        self._ocr = Ocr()
         self._estado = QLabel("Ningún mes procesado todavía.")
         self._etiquetas: dict[str, QLabel] = {}
         self._lista_no_clasificados = QListWidget()
@@ -68,9 +75,10 @@ class VentanaPrincipal(QMainWindow):
         self.btn_confirmar_retefuente.clicked.connect(self._on_btn_confirmar_retefuente)
         self.btn_confirmar_retefuente.setEnabled(False)
         self._tabla_retefuente.itemChanged.connect(self._on_tabla_retefuente_changed)
-        self._config = ConfigYaml(Path(__file__).resolve().parents[3] / "reglas")
-        self._repo = RepoSqlite(Path.home() / ".dian_hojas" / "retefuente.sqlite")
+        self._config = ConfigYaml(directorio_reglas())
+        self._repo = RepoSqlite(directorio_datos() / "retefuente.sqlite")
         self._construir_ui()
+        self._cargar_perfiles()
         self._refrescar()
 
     # --- UI -----------------------------------------------------------------------
@@ -94,10 +102,10 @@ class VentanaPrincipal(QMainWindow):
         layout.addWidget(QLabel("Listado DIAN (.xlsx)"), 0, 0)
         self._campo_ruta = QLineEdit()
         self._campo_ruta.setPlaceholderText("Ruta del listado descargado de la DIAN")
-        layout.addWidget(self._campo_ruta, 0, 1)
+        layout.addWidget(self._campo_ruta, 0, 1, 1, 2)
         boton_ruta = QPushButton("Examinar…")
         boton_ruta.clicked.connect(self._examinar_archivo)
-        layout.addWidget(boton_ruta, 0, 2)
+        layout.addWidget(boton_ruta, 0, 3)
 
         layout.addWidget(QLabel("Año"), 1, 0)
         self._campo_anio = QSpinBox()
@@ -109,29 +117,96 @@ class VentanaPrincipal(QMainWindow):
         self._campo_mes.addItems([str(m) for m in range(1, 13)])
         layout.addWidget(self._campo_mes, 1, 3)
 
-        layout.addWidget(QLabel("Nombre del cliente"), 2, 0)
+        layout.addWidget(QLabel("Cliente guardado"), 2, 0)
+        self.combo_perfiles = QComboBox()
+        self.combo_perfiles.currentIndexChanged.connect(self._on_perfil_cambiado)
+        layout.addWidget(self.combo_perfiles, 2, 1, 1, 2)
+        self.btn_guardar_perfil = QPushButton("Guardar cliente")
+        self.btn_guardar_perfil.clicked.connect(self._guardar_perfil)
+        layout.addWidget(self.btn_guardar_perfil, 2, 3)
+
+        layout.addWidget(QLabel("Nombre del cliente"), 3, 0)
         self._campo_nombre = QLineEdit()
         self._campo_nombre.setPlaceholderText("Nombre del cliente")
-        layout.addWidget(self._campo_nombre, 2, 1)
-        layout.addWidget(QLabel("NIT del cliente"), 2, 2)
+        layout.addWidget(self._campo_nombre, 3, 1)
+        layout.addWidget(QLabel("NIT del cliente"), 3, 2)
         self._campo_nit = QLineEdit()
         self._campo_nit.setPlaceholderText("NIT del cliente")
-        layout.addWidget(self._campo_nit, 2, 3)
+        layout.addWidget(self._campo_nit, 3, 3)
 
-        layout.addWidget(QLabel("Carpeta de salida"), 3, 0, 2, 1)
+        layout.addWidget(QLabel("Carpeta de salida"), 4, 0)
         self._campo_carpeta = QLineEdit()
         self._campo_carpeta.setText(str(Path.home() / "Documents" / "Hojas_trabajo" / "salidas"))
-        layout.addWidget(self._campo_carpeta, 3, 1, 1, 3)
+        layout.addWidget(self._campo_carpeta, 4, 1, 1, 3)
 
         self.btn_procesar = QPushButton("Procesar")
         self.btn_procesar.clicked.connect(self._on_btn_procesar)
         self.btn_exportar = QPushButton("Exportar hoja de trabajo")
         self.btn_exportar.clicked.connect(self._on_btn_exportar)
         self.btn_exportar.setEnabled(False)
-        layout.addWidget(self.btn_procesar, 4, 0)
-        layout.addWidget(self.btn_exportar, 4, 1)
+        self.btn_configuracion = QPushButton("Configuración tributaria…")
+        self.btn_configuracion.clicked.connect(self._on_btn_configuracion)
+        self.btn_verificar_soportes = QPushButton("Verificar soportes (OCR, opcional)…")
+        self.btn_verificar_soportes.clicked.connect(self._on_btn_verificar_soportes)
+        layout.addWidget(self.btn_procesar, 5, 0)
+        layout.addWidget(self.btn_exportar, 5, 1)
+        layout.addWidget(self.btn_configuracion, 5, 2)
+        layout.addWidget(self.btn_verificar_soportes, 5, 3)
 
         return contenedor
+
+    # --- Perfiles por cliente (Fase 4) -------------------------------------------------
+
+    def _cargar_perfiles(self) -> None:
+        """Llena el combo con los clientes recordados; no cambia el formulario."""
+        self.combo_perfiles.blockSignals(True)
+        self.combo_perfiles.clear()
+        perfiles = self._repo.perfiles()
+        if not perfiles:
+            self.combo_perfiles.addItem("— Nuevo cliente —", None)
+        else:
+            for perfil in perfiles:
+                etiqueta = f"{perfil.cliente.nombre} ({perfil.cliente.numero})"
+                self.combo_perfiles.addItem(etiqueta, perfil.cliente.numero)
+        self.combo_perfiles.blockSignals(False)
+
+    def _guardar_perfil(self) -> None:
+        """Guarda el cliente actual para no volver a escribirlo cada mes."""
+        nit = self._campo_nit.text().strip()
+        nombre = self._campo_nombre.text().strip()
+        if not nit or not nombre:
+            self._estado.setText("Para guardar el cliente necesito su nombre y su NIT.")
+            return
+        perfil = PerfilCliente(
+            cliente=Cliente(nombre=nombre, tipo_identificacion="NIT", numero=nit),
+            carpeta_salida=self._campo_carpeta.text().strip(),
+        )
+        self._repo.guardar_perfil(perfil)
+        self._cargar_perfiles()
+        indice = self.combo_perfiles.findData(nit)
+        if indice >= 0:
+            self.combo_perfiles.blockSignals(True)
+            self.combo_perfiles.setCurrentIndex(indice)
+            self.combo_perfiles.blockSignals(False)
+        self._estado.setText(f"Cliente guardado: {nombre}.")
+
+    def _on_perfil_cambiado(self, indice: int) -> None:
+        numero = self.combo_perfiles.itemData(indice)
+        if not numero:
+            return
+        perfil = self._repo.perfil(str(numero))
+        if perfil is None:
+            return
+        self._campo_nombre.setText(perfil.cliente.nombre)
+        self._campo_nit.setText(perfil.cliente.numero)
+        if perfil.carpeta_salida:
+            self._campo_carpeta.setText(perfil.carpeta_salida)
+
+    def _on_btn_configuracion(self) -> None:
+        dialogo = DialogoConfiguracionTributaria(self._config.directorio_reglas, self)
+        dialogo.exec()
+        if self._proceso is not None:
+            self._llenar_tabla_retefuente()
 
     def _examinar_archivo(self) -> None:
         ruta, _filtro = QFileDialog.getOpenFileName(self, "Listado de la DIAN", "", "Excel (*.xlsx)")
@@ -164,6 +239,11 @@ class VentanaPrincipal(QMainWindow):
     def trabajo(self) -> HiloProcesar | None:
         """El trabajador actual del hilo; útil para esperar sus señales en las pruebas."""
         return self._trabajo
+
+    @property
+    def soportes_verificados(self) -> frozenset[str]:
+        """CUFEs cuyo soporte físico el usuario ya cruzó con OCR (opcional)."""
+        return frozenset(self._soportes_verificados)
 
     # --- Estado -------------------------------------------------------------------
 
@@ -304,6 +384,7 @@ class VentanaPrincipal(QMainWindow):
                 Path(self._campo_carpeta.text()),
                 EscritorOpenpyxl(),
                 retefuente=retefuente,
+                soportes_verificados=self.soportes_verificados,
             )
         except ExportacionBloqueada as exc:
             self._error = str(exc)
@@ -311,6 +392,55 @@ class VentanaPrincipal(QMainWindow):
         else:
             self._error = None
             self._estado.setText(f"Retenciones confirmadas y exportadas. Retención total: {retefuente.total_retencion}")
+
+    # --- Soportes físicos opcionales (Fase 4) ------------------------------------------
+
+    def _on_btn_verificar_soportes(self) -> None:
+        if self._proceso is None:
+            self._estado.setText("Primero procesa un mes para poder verificar soportes.")
+            return
+        rutas, _filtro = QFileDialog.getOpenFileNames(
+            self,
+            "Soportes físicos (PDF o imagen)",
+            "",
+            "Soportes (*.pdf *.png *.jpg *.jpeg *.tif *.tiff);;Todos los archivos (*)",
+        )
+        if rutas:
+            self.verificar_soportes([Path(ruta) for ruta in rutas])
+
+    def verificar_soportes(self, rutas: list[Path]) -> tuple:
+        """Intenta leer los soportes y marca los documentos que aparecen en su texto.
+
+        Es opcional: si el OCR no está instalado o un archivo no se puede leer, se avisa y se
+        sigue. Nada de esto bloquea la exportación.
+        """
+        if self._proceso is None:
+            self._estado.setText("Primero procesa un mes para poder verificar soportes.")
+            return ()
+
+        encontrados = []
+        avisos: list[str] = []
+        for ruta in rutas:
+            try:
+                texto = self._ocr.extraer_texto(Path(ruta))
+            except ErrorOcr as exc:
+                avisos.append(str(exc))
+                continue
+            documentos = documentos_en_texto(texto, self._proceso.resultado.documentos)
+            encontrados.extend(documentos)
+            self._soportes_verificados.update(documento.cufe for documento in documentos)
+
+        if not encontrados and avisos:
+            self._estado.setText("No se pudo verificar ningún soporte. " + " ".join(avisos))
+        else:
+            mensaje = (
+                f"Soportes verificados: {len(encontrados)} documento(s) "
+                f"en {len(rutas)} archivo(s)."
+            )
+            if avisos:
+                mensaje += " Avisos: " + " ".join(avisos)
+            self._estado.setText(mensaje)
+        return tuple(encontrados)
 
     # --- Procesamiento ------------------------------------------------------------
 
@@ -355,6 +485,7 @@ class VentanaPrincipal(QMainWindow):
         else:
             self._proceso = resultado
             self._error = None
+            self._soportes_verificados.clear()
         self._refrescar()
 
     def _on_error(self, mensaje: str) -> None:
@@ -380,6 +511,7 @@ class VentanaPrincipal(QMainWindow):
                 Path(self._campo_carpeta.text()),
                 EscritorOpenpyxl(),
                 retefuente=retefuente,
+                soportes_verificados=self.soportes_verificados,
             )
         except ExportacionBloqueada as exc:
             self._error = str(exc)
@@ -399,4 +531,5 @@ class VentanaPrincipal(QMainWindow):
             carpeta,
             EscritorOpenpyxl(),
             retefuente=self._calcular_retefuente(),
+            soportes_verificados=self.soportes_verificados,
         )

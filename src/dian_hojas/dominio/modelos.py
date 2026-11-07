@@ -89,6 +89,19 @@ class Cliente(BaseModel):
         return texto
 
 
+class PerfilCliente(BaseModel):
+    """Datos del cliente que se recuerdan entre meses (Fase 4).
+
+    La identificación se guarda como texto (regla 8) y la carpeta de salida es opcional: si viene
+    vacía, la interfaz conserva la que el usuario tenga en ese momento.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    cliente: Cliente
+    carpeta_salida: str = ""
+
+
 class Periodo(BaseModel):
     """Mes y año que se están trabajando."""
 

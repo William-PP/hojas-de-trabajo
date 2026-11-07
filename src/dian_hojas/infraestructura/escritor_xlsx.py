@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+from typing import Collection
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -53,9 +54,11 @@ class EscritorOpenpyxl:
         *,
         ruta_listado: Path,
         retefuente: RetefuenteMes | None = None,
+        soportes_verificados: Collection[str] | None = None,
     ) -> Path:
         destino = Path(destino)
         ruta_listado = Path(ruta_listado)
+        verificados = frozenset(soportes_verificados or ())
 
         if not resultado.en_hoja:
             raise ErrorEscritura(
@@ -71,10 +74,10 @@ class EscritorOpenpyxl:
             self._conservar_dian(wb)
             for hoja in (Hoja.SUMATORIAS, Hoja.VENTAS, Hoja.COMPRAS):
                 ws = wb.create_sheet(str(hoja))
-                self._construir_hoja(ws, hoja, resultado, cliente, periodo)
+                self._construir_hoja(ws, hoja, resultado, cliente, periodo, verificados)
             if retefuente is not None and retefuente.lineas:
                 ws = wb.create_sheet(plantilla.nombre_hoja_retefuente(periodo))
-                self._construir_retefuente(ws, periodo, retefuente, cliente)
+                self._construir_retefuente(ws, periodo, retefuente, cliente, verificados)
             wb.calculation.fullCalcOnLoad = True
             destino.parent.mkdir(parents=True, exist_ok=True)
             wb.save(destino)
@@ -111,6 +114,7 @@ class EscritorOpenpyxl:
         resultado: ResultadoMes,
         cliente: Cliente,
         periodo: Periodo,
+        verificados: frozenset[str],
     ) -> None:
         self._aplicar_anchos(ws)
         self._cabecera(ws, cliente, periodo)
@@ -131,7 +135,7 @@ class EscritorOpenpyxl:
                 continue
             if fila > fila_inicial:
                 fila += 2
-            fila = self._bloque(ws, fila, definicion, documentos, marcas=marcas)
+            fila = self._bloque(ws, fila, definicion, documentos, marcas=marcas, verificados=verificados)
 
         ws.freeze_panes = "A5"
         ws.auto_filter.ref = f"C4:T{ws.max_row}"
@@ -142,6 +146,7 @@ class EscritorOpenpyxl:
         periodo,
         retefuente,
         cliente: Cliente,
+        verificados: frozenset[str],
     ) -> None:
         """Pestaña `Retefuente [Mes]`: copia de las compras con columnas de trabajo a la derecha."""
         self._aplicar_anchos(ws)
@@ -151,7 +156,7 @@ class EscritorOpenpyxl:
 
         fila = 5
         for linea in retefuente.lineas:
-            self._escribir_documento(ws, fila, linea.documento, marcas=True)
+            self._escribir_documento(ws, fila, linea.documento, marcas=True, verificados=verificados)
             self._escribir_campo_retefuente(ws, fila, linea)
             fila += 1
         self._resumen_retefuente(ws, fila, retefuente)
@@ -260,6 +265,7 @@ class EscritorOpenpyxl:
         documentos: tuple[DocumentoElectronico, ...],
         *,
         marcas: bool,
+        verificados: frozenset[str],
     ) -> int:
         """Escribe título, filas de datos y total. Devuelve la fila siguiente a la del total."""
         self._titulo(ws, fila, definicion.titulo, estilos.FUENTE_TITULO_BLOQUE)
@@ -267,7 +273,7 @@ class EscritorOpenpyxl:
 
         primera_datos = fila
         for documento in documentos:
-            self._fila_documento(ws, fila, documento, marcas=marcas)
+            self._fila_documento(ws, fila, documento, marcas=marcas, verificados=verificados)
             fila += 1
         ultima_datos = fila - 1
 
@@ -281,8 +287,9 @@ class EscritorOpenpyxl:
         documento: DocumentoElectronico,
         *,
         marcas: bool,
+        verificados: frozenset[str],
     ) -> None:
-        self._escribir_documento(ws, fila, documento, marcas=marcas)
+        self._escribir_documento(ws, fila, documento, marcas=marcas, verificados=verificados)
 
     def _escribir_documento(
         self,
@@ -291,9 +298,14 @@ class EscritorOpenpyxl:
         documento: DocumentoElectronico,
         *,
         marcas: bool,
+        verificados: frozenset[str] = frozenset(),
     ) -> None:
         if marcas:
-            for columna, valor in ((1, True), (2, False)):
+            valores_marca = (
+                (1, True),
+                (2, documento.cufe in verificados),
+            )
+            for columna, valor in valores_marca:
                 celda = ws.cell(row=fila, column=columna, value=valor)
                 celda.font = estilos.FUENTE_DATO
                 celda.alignment = estilos.ALINEACION_BOOLEANO

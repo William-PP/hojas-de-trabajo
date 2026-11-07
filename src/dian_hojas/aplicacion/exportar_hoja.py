@@ -7,6 +7,7 @@ preferible un mensaje claro a un archivo que después parece un mes trabajado.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Collection
 
 from dian_hojas.aplicacion.procesar_mes import ResultadoProcesamiento
 from dian_hojas.dominio.modelos import Cliente, Periodo
@@ -39,11 +40,15 @@ def exportar_hoja(
     escritor: EscritorHoja,
     *,
     retefuente: RetefuenteMes | None = None,
+    soportes_verificados: Collection[str] | None = None,
 ) -> Path:
     """Genera el archivo en `carpeta` y devuelve su ruta.
 
     `retefuente` es el resultado del motor de retención (Fase 3); si viene con líneas, la pestaña
     `Retefuente [Mes]` se escribe después de `Compras`.
+
+    `soportes_verificados` son los CUFEs cuyo soporte físico el usuario ya cruzó (Fase 4, opcional);
+    solo marcan `FISICA = TRUE`, nunca bloquean la exportación.
     """
     if proceso.mes_vacio:
         raise MesVacio(
@@ -61,4 +66,5 @@ def exportar_hoja(
         destino,
         ruta_listado=proceso.ruta_listado,
         retefuente=retefuente,
+        soportes_verificados=soportes_verificados,
     )

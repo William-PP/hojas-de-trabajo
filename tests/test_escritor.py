@@ -20,14 +20,25 @@ CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
-def escribir(tmp_path: Path, ruta_listado: Path, resultado=None) -> Path:
+def escribir(
+    tmp_path: Path,
+    ruta_listado: Path,
+    resultado=None,
+    *,
+    soportes_verificados=None,
+) -> Path:
     if resultado is None:
         from dian_hojas.infraestructura.lector_dian_xlsx import LectorDianXlsx
 
         resultado = construir_resultado(LectorDianXlsx().leer(ruta_listado).documentos)
     destino = tmp_path / "salida.xlsx"
     return EscritorOpenpyxl().escribir(
-        resultado, CLIENTE, PERIODO, destino, ruta_listado=ruta_listado
+        resultado,
+        CLIENTE,
+        PERIODO,
+        destino,
+        ruta_listado=ruta_listado,
+        soportes_verificados=soportes_verificados,
     )
 
 
@@ -229,6 +240,38 @@ def test_marcas_dian_fisica(libro):
         for fila in filas:
             assert ws.cell(row=fila, column=1).value is True
             assert ws.cell(row=fila, column=2).value is False
+
+
+def test_soportes_verificados_marcan_la_columna_fisica(tmp_path, ruta_listado_sintetico):
+    from dian_hojas.infraestructura.lector_dian_xlsx import LectorDianXlsx
+
+    listado = LectorDianXlsx().leer(ruta_listado_sintetico)
+    resultado = construir_resultado(listado.documentos)
+    cufe_compra = next(d.cufe for d in resultado.documentos_de(Bloque.FACTURAS_COMPRAS))
+
+    ruta = escribir(
+        tmp_path,
+        ruta_listado_sintetico,
+        resultado,
+        soportes_verificados={cufe_compra},
+    )
+    wb = load_workbook(ruta)
+    try:
+        filas = [
+            fila
+            for fila in range(6, wb["Compras"].max_row + 1)
+            if wb["Compras"].cell(row=fila, column=4).value is not None
+        ]
+        marcas = {
+            wb["Compras"].cell(row=fila, column=4).value: wb["Compras"].cell(
+                row=fila, column=2
+            ).value
+            for fila in filas
+        }
+        assert marcas[cufe_compra] is True
+        assert any(valor is False for valor in marcas.values())
+    finally:
+        wb.close()
 
 
 def test_compras_lleva_los_tres_bloques(libro):

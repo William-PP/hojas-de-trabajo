@@ -519,6 +519,103 @@ confirmado.
 
 ---
 
+## D-37. Perfiles por cliente en SQLite
+
+`AGENTS.md` §9 pide «perfiles por cliente». La Fase 2 pedía nombre y NIT cada vez, sin memoria.
+
+**Decisión:** se guardan en la tabla `perfiles_cliente` del SQLite local
+(`~/.dian_hojas/retefuente.sqlite`): nombre, tipo y número de identificación, dígito de verificación
+y carpeta de salida. El número se guarda como **texto** (regla 8), así conserva ceros a la izquierda.
+La ventana trae un combo «Cliente guardado» y un botón «Guardar cliente»; al elegir un perfil se
+rellenan los campos. Las reglas propias por cliente quedan reservadas en `reglas/clientes/`.
+
+---
+
+## D-38. Editor gráfico de la configuración tributaria
+
+La regla 4 exige que UVT, bases mínimas y tarifas salgan **solo** de `reglas/[año].yaml`. Editar YAML
+a mano excluye a usuarios sin conocimientos técnicos.
+
+**Decisión:** la interfaz ofrece «Configuración tributaria…» con un formulario para el año, la UVT y
+los cinco conceptos (base mínima en UVT y tarifa). Al guardar:
+
+- se valida todo (valores presentes, numéricos, UVT > 0, base ≥ 0, 0 ≤ tarifa ≤ 1);
+- si falta algo se muestra el error y **no se escribe** el archivo;
+- se escribe con `guardar_configuracion` en `reglas/[año].yaml`, sin rellenar valores por defecto.
+
+La tarifa se escribe como decimal (`0.05` = 5%), igual que la lee el motor.
+
+---
+
+## D-39. «Cargar YAML existente»
+
+El usuario puede tener un YAML que le entregó su contador, con otro nombre o en otra carpeta.
+
+**Decisión:** el botón «Cargar YAML existente…» lee y valida el archivo, y **muestra** sus valores en
+el formulario. No lo copia automáticamente: se guarda solo cuando el usuario pulsa «Guardar», y en ese
+momento queda en `reglas/[año].yaml`. El año se toma del propio archivo (`anio:`) y, si no lo trae, del
+selector de la ventana.
+
+---
+
+## D-40. OCR opcional, nunca obligatorio
+
+El usuario pidió explícitamente que no se obligue a incluir una factura en PDF o imagen.
+
+**Decisión:** el OCR es un módulo **opcional** (`infraestructura/ocr.py`, protocolo `OcrProveedor`).
+
+- La aplicación funciona completa sin `pytesseract` ni poppler.
+- Solo se ejecuta si el usuario pulsa «Verificar soportes (OCR, opcional)…» y elige archivos.
+- Si faltan las dependencias, el archivo no existe o no tiene texto, se lanza `ErrorOcr` y la
+  interfaz muestra el aviso; el resto del flujo sigue.
+- Las dependencias viven en el extra `[ocr]` del `pyproject.toml`.
+- El motor real se importa dentro de la función, y `Ocr(motor=...)` permite probarlo sin Tesseract.
+
+---
+
+## D-41. Cruce con soportes físicos
+
+El cruce automático solo debe ayudar, no bloquear ni adivinar.
+
+**Decisión:** `documentos_en_texto` normaliza el texto (mayúsculas, sin tildes ni signos) y busca:
+
+- el CUFE completo, o
+- `prefijo + folio`, o
+- un folio suelto de al menos 6 caracteres (para evitar falsos positivos con folios como `16`).
+
+Los documentos encontrados se marcan con `FISICA = TRUE` en `Ventas`/`Compras` al exportar. Si el
+cruce no encuentra nada, la exportación continúa igual: la columna `FISICA` es una ayuda de revisión,
+no un cuadre obligatorio.
+
+---
+
+## D-42. Rutas de reglas y datos en fuente y en `.exe`
+
+La ventana resolvía `reglas/` con `parents[3]`, que apuntaba a `src/reglas` y no a la raíz del
+repositorio. Además, dentro de un ejecutable `__file__` vive en una carpeta temporal.
+
+**Decisión:** `rutas.py` centraliza la resolución:
+
+1. `DIAN_HOJAS_REGLAS` / `DIAN_HOJAS_DATOS` si están definidas;
+2. si `sys.frozen`, `reglas/` al lado del `.exe` y datos en `~/.dian_hojas`;
+3. en el repositorio, `reglas/` en la raíz.
+
+Así el usuario puede editar sus reglas sin tocar el binario.
+
+---
+
+## D-43. Empaquetado con PyInstaller
+
+`AGENTS.md` §9 pide empaquetado `.exe`.
+
+**Decisión:** `dian_hojas.spec` construye una carpeta (`onedir`) llamada `HojasTrabajoDIAN`, con
+entrada `python -m dian_hojas` (`__main__.py`). `scripts/construir_exe.ps1` instala los extras
+`[gui,empaquetado]`, construye y copia `reglas/` al lado del ejecutable. Las reglas **no** se meten
+dentro del binario (se perderían o quedarían ocultas para el usuario). El OCR se incluye solo si sus
+módulos están instalados al construir.
+
+---
+
 ## Resumen de lo que necesito de ti
 
 | # | Decisión | Estado |
@@ -559,5 +656,13 @@ confirmado.
 | D-34 | Valores ausentes en la configuración tributaria se consideran faltantes | aprobada |
 | D-35 | Pestaña `Retefuente [Mes]` y resumen | aprobada |
 | D-36 | Tabla editable de retención en la interfaz | aprobada |
+| D-37 | Perfiles por cliente en SQLite | aprobada |
+| D-38 | Editor gráfico de la configuración tributaria | aprobada |
+| D-39 | Cargar YAML existente en el editor | aprobada |
+| D-40 | OCR opcional, nunca obligatorio | aprobada |
+| D-41 | Cruce de soportes por CUFE/prefijo+folio | aprobada |
+| D-42 | Rutas de reglas y datos en fuente y `.exe` | aprobada |
+| D-43 | Empaquetado `onedir` con PyInstaller | aprobada |
 
-Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.
+Lo único que sigue abierto es el YAML tributario de 2026 (D-18); el editor de la interfaz ya está
+listo para recibirlo.

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dian_hojas.aplicacion.procesar_mes import ResultadoProcesamiento
 from dian_hojas.dominio.modelos import Cliente, Periodo
+from dian_hojas.dominio.retefuente import RetefuenteMes
 from dian_hojas.puertos import EscritorHoja
 
 
@@ -36,8 +37,14 @@ def exportar_hoja(
     periodo: Periodo,
     carpeta: Path,
     escritor: EscritorHoja,
+    *,
+    retefuente: RetefuenteMes | None = None,
 ) -> Path:
-    """Genera el archivo en `carpeta` y devuelve su ruta."""
+    """Genera el archivo en `carpeta` y devuelve su ruta.
+
+    `retefuente` es el resultado del motor de retención (Fase 3); si viene con líneas, la pestaña
+    `Retefuente [Mes]` se escribe después de `Compras`.
+    """
     if proceso.mes_vacio:
         raise MesVacio(
             "El listado del mes no tiene documentos: no se genera archivo. "
@@ -53,4 +60,5 @@ def exportar_hoja(
         periodo,
         destino,
         ruta_listado=proceso.ruta_listado,
+        retefuente=retefuente,
     )

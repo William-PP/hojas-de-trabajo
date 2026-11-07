@@ -18,6 +18,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from dian_hojas.dominio.modelos import Cliente, DocumentoElectronico, Periodo, ResultadoMes
+from dian_hojas.dominio.retefuente import RetefuenteMes
 from dian_hojas.infraestructura import estilos, plantilla
 from dian_hojas.infraestructura.plantilla import DefinicionBloque, Hoja
 
@@ -51,6 +52,7 @@ class EscritorOpenpyxl:
         destino: Path,
         *,
         ruta_listado: Path,
+        retefuente: RetefuenteMes | None = None,
     ) -> Path:
         destino = Path(destino)
         ruta_listado = Path(ruta_listado)
@@ -70,6 +72,9 @@ class EscritorOpenpyxl:
             for hoja in (Hoja.SUMATORIAS, Hoja.VENTAS, Hoja.COMPRAS):
                 ws = wb.create_sheet(str(hoja))
                 self._construir_hoja(ws, hoja, resultado, cliente, periodo)
+            if retefuente is not None and retefuente.lineas:
+                ws = wb.create_sheet(plantilla.nombre_hoja_retefuente(periodo))
+                self._construir_retefuente(ws, periodo, retefuente, cliente)
             wb.calculation.fullCalcOnLoad = True
             destino.parent.mkdir(parents=True, exist_ok=True)
             wb.save(destino)
@@ -130,6 +135,80 @@ class EscritorOpenpyxl:
 
         ws.freeze_panes = "A5"
         ws.auto_filter.ref = f"C4:T{ws.max_row}"
+
+    def _construir_retefuente(
+        self,
+        ws: Worksheet,
+        periodo,
+        retefuente,
+        cliente: Cliente,
+    ) -> None:
+        """Pestaña `Retefuente [Mes]`: copia de las compras con columnas de trabajo a la derecha."""
+        self._aplicar_anchos(ws)
+        self._cabecera(ws, cliente, periodo)
+        for titulo, columna in plantilla.COLUMNAS_RETIFUERTE:
+            self._estilo_encabezado(ws.cell(row=4, column=columna, value=titulo))
+
+        fila = 5
+        for linea in retefuente.lineas:
+            self._escribir_documento(ws, fila, linea.documento, marcas=True)
+            self._escribir_campo_retefuente(ws, fila, linea)
+            fila += 1
+        self._resumen_retefuente(ws, fila, retefuente)
+
+        ws.freeze_panes = "A5"
+        ws.auto_filter.ref = f"C4:T{ws.max_row}"
+
+    def _escribir_campo_retefuente(self, ws: Worksheet, fila: int, linea) -> None:
+        campos = (
+            (plantilla.COLUMNA_RETIFUERTE_CONCEPTO, linea.concepto, estilos.FUENTE_DATO, None),
+            (plantilla.COLUMNA_RETIFUERTE_BASE, _numero(linea.base), estilos.FUENTE_DATO_MONETARIO, estilos.FORMATO_MONEDA),
+            (plantilla.COLUMNA_RETIFUERTE_BASE_MIN, linea.base_minima_uvt, estilos.FUENTE_DATO, None),
+            (plantilla.COLUMNA_RETIFUERTE_SUPERA, "Sí" if linea.supera_base else "No", estilos.FUENTE_DATO, None),
+            (plantilla.COLUMNA_RETIFUERTE_TARIFA, linea.tarifa, estilos.FUENTE_DATO_MONETARIO, estilos.FORMATO_MONEDA),
+            (plantilla.COLUMNA_RETIFUERTE_RETENCION, linea.retencion, estilos.FUENTE_DATO_MONETARIO, estilos.FORMATO_MONEDA),
+            (plantilla.COLUMNA_RETIFUERTE_OBS, f"Proveedor {linea.documento.nit_emisor}" if linea.documento else "", estilos.FUENTE_DATO, None),
+        )
+        for columna, valor, fuente, formato in campos:
+            celda = ws.cell(row=fila, column=columna, value=valor)
+            celda.font = fuente
+            if formato is not None:
+                celda.number_format = formato
+
+    def _resumen_retefuente(self, ws: Worksheet, fila: int, retefuente) -> int:
+        """Resumen final por concepto y `TOTAL RETENCIÓN A DECLARAR`."""
+        grupos: dict[str, list] = {}
+        for linea in retefuente.lineas:
+            grupos.setdefault(linea.concepto, []).append(linea)
+
+        siguiente = fila
+        for concepto in sorted(grupos):
+            grupo = grupos[concepto]
+            base_total = sum((linea.base for linea in grupo), Decimal("0"))
+            retencion_total = sum((linea.retencion for linea in grupo), Decimal("0"))
+            self._escribir_resumen_retefuente(ws, siguiente, concepto, base_total, retencion_total)
+            siguiente += 1
+
+        self._escribir_resumen_retefuente(
+            ws, siguiente, "TOTAL RETENCIÓN A DECLARAR", retefuente.total_retencion, retefuente.total_retencion
+        )
+        return siguiente + 1
+
+    def _escribir_resumen_retefuente(
+        self,
+        ws: Worksheet,
+        fila: int,
+        concepto: str,
+        base_total: Decimal,
+        retencion_total: Decimal,
+    ) -> None:
+        etiqueta = ws.cell(row=fila, column=plantilla.COLUMNA_RETIFUERTE_CONCEPTO, value=concepto)
+        etiqueta.font = estilos.FUENTE_TOTAL_ETIQUETA
+        base = ws.cell(row=fila, column=plantilla.COLUMNA_RETIFUERTE_BASE, value=_numero(base_total))
+        base.font = estilos.FUENTE_DATO
+        retencion = ws.cell(row=fila, column=plantilla.COLUMNA_RETIFUERTE_RETENCION, value=_numero(retencion_total))
+        retencion.font = estilos.FUENTE_TOTAL_VALOR
+        retencion.number_format = estilos.FORMATO_MONEDA
 
     def _aplicar_anchos(self, ws: Worksheet) -> None:
         for letra, ancho in estilos.ANCHOS.items():
@@ -196,6 +275,16 @@ class EscritorOpenpyxl:
         return fila + 1
 
     def _fila_documento(
+        self,
+        ws: Worksheet,
+        fila: int,
+        documento: DocumentoElectronico,
+        *,
+        marcas: bool,
+    ) -> None:
+        self._escribir_documento(ws, fila, documento, marcas=marcas)
+
+    def _escribir_documento(
         self,
         ws: Worksheet,
         fila: int,

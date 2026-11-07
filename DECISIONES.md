@@ -474,6 +474,38 @@ texto y se valida contra los documentos (C6) sin inventar datos.
 
 ---
 
+## D-33. Nombre de la pestaña `Retefuente`
+
+`AGENTS.md` §4.5 la llama `Retefuente [Mes]`, con ejemplo `Retefuente Octubre`.
+
+**Decisión:** el nombre real de la pestaña generada es `Retefuente {Mes en nombre propio}`, por
+ejemplo `Retefuente Octubre` para octubre. Se aplica `capitalize()` al nombre completo del mes
+(`OCTUBRE` → `Octubre`).
+
+---
+
+## D-34. Valores ausentes en la configuración tributaria se consideran faltantes
+
+Un YAML puede traer claves con valor `null`. Para los datos tributarios (UVT, base mínima, tarifa)
+un valor `null` se trata como **ausente** y dispara el error de configuración con el concepto
+incompleto.
+
+---
+
+## D-35. Pestaña `Retefuente [Mes]` y resumen
+
+La pestaña se construye con:
+
+- filas de datos a partir de las líneas de retención (concepto, base, base mínima, ¿supera la base?,
+  tarifa, retención, observaciones);
+- resumen final **por concepto** (base total, retención) y la fila final
+  `TOTAL RETENCIÓN A DECLARAR`.
+
+Las columnas nuevas empiezan en la columna **U** (la pestaña `Retefuente` se apoya en la copia de
+`Compras`).
+
+---
+
 ## Resumen de lo que necesito de ti
 
 | # | Decisión | Estado |
@@ -510,5 +542,8 @@ texto y se valida contra los documentos (C6) sin inventar datos.
 | D-30 | Procesamiento en `QThread` desde la ventana | aprobada |
 | D-31 | Botón de exportación solo habilitado si el mes puede exportarse | aprobada |
 | D-32 | Cliente ingresado desde la interfaz por NIT | aprobada |
+| D-33 | Nombre de la pestaña `Retefuente` | aprobada |
+| D-34 | Valores ausentes en la configuración tributaria se consideran faltantes | aprobada |
+| D-35 | Pestaña `Retefuente [Mes]` y resumen | aprobada |
 
 Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.

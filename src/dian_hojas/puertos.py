@@ -31,3 +31,11 @@ class EscritorHoja(Protocol):
         *,
         ruta_listado: Path,
     ) -> Path: ...
+
+
+class RepositorioProveedores(Protocol):
+    """Memoria local de proveedor → concepto de retención, y decisiones del usuario."""
+
+    def concepto_de_proveedor(self, nit: str) -> str | None: ...
+
+    def asignar_concepto(self, nit: str, concepto: str) -> None: ...

@@ -48,6 +48,33 @@ COLUMNA_TOTAL = 18  # R
 COLUMNA_ETIQUETA_TOTAL = 15  # O
 
 TITULO_GENERAL = "REVISION DEL TOTAL DE DOCUMENTOS Y SUMATORIAS"
+CLAVE_RETIFUERTE = "Retefuente"
+
+# Columnas de trabajo que se agregan a la derecha de las compras en la pestaña `Retefuente [Mes]`.
+COLUMNA_RETIFUERTE_CONCEPTO = 21  # U
+COLUMNA_RETIFUERTE_BASE = 22  # V
+COLUMNA_RETIFUERTE_BASE_MIN = 23  # W
+COLUMNA_RETIFUERTE_SUPERA = 24  # X
+COLUMNA_RETIFUERTE_TARIFA = 25  # Y
+COLUMNA_RETIFUERTE_RETENCION = 26  # Z
+COLUMNA_RETIFUERTE_OBS = 27  # AA
+
+COLUMNAS_RETIFUERTE: tuple[tuple[str, int], ...] = (
+    ("Concepto", COLUMNA_RETIFUERTE_CONCEPTO),
+    ("Base de retención", COLUMNA_RETIFUERTE_BASE),
+    ("Base mínima (UVT)", COLUMNA_RETIFUERTE_BASE_MIN),
+    ("¿Supera la base?", COLUMNA_RETIFUERTE_SUPERA),
+    ("Tarifa", COLUMNA_RETIFUERTE_TARIFA),
+    ("Retención", COLUMNA_RETIFUERTE_RETENCION),
+    ("Observaciones", COLUMNA_RETIFUERTE_OBS),
+)
+
+
+def nombre_hoja_retefuente(periodo) -> str:
+    """Pestaña de retención: `Retefuente Octubre` (según el mes en letras completas)."""
+    from dian_hojas.dominio.modelos import Periodo  # evita import en tiempo de definición
+
+    return f"{CLAVE_RETIFUERTE} {periodo.nombre_mes.capitalize()}"
 
 ENCABEZADO_DIAN = "DIAN"
 ENCABEZADO_FISICA = "FISICA"

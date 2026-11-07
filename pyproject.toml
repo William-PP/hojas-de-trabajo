@@ -36,6 +36,7 @@ pythonpath = ["src"]
 addopts = "-ra --strict-markers"
 markers = [
     "referencias: usa los archivos reales de Referencias/ (no versionados)",
+    "gui: pruebas de la interfaz con PySide6 y pytest-qt",
 ]
 filterwarnings = [
     "ignore:Unknown extension is not supported:UserWarning",

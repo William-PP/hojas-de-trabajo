@@ -434,6 +434,46 @@ resultado. En esta máquina no está instalado, así que hoy se ejecuta como `sk
 
 ---
 
+## D-30. Procesamiento en `QThread` desde la ventana
+
+El procesamiento de un listado puede tardar (lectura, clasificación, cuadres) y no debe bloquear la
+interfaz. La ventana principal (`VentanaPrincipal`) arranca un `QThread` con un trabajador
+`HiloProcesar` (un `QObject` con señales `termino`, `error` y `finished`) y lo conecta:
+
+- `started → trabajador.trabajar`
+- `trabajador.termino → ventana._on_termino` (slot de la GUI → conexión en cola)
+- `trabajador.error → ventana._on_error`
+- `trabajador.finished → hilo.quit`; `hilo.finished → hilo.deleteLater`
+
+**Decisión:** el worker emite `termino` y luego `finished` en un bloque `finally`, para que el hilo
+nunca quede colgado aunque falle la lectura.
+
+---
+
+## D-31. El botón de exportación solo se habilita si el mes puede exportarse
+
+`VentanaPrincipal._refrescar` habilita el botón «Exportar hoja de trabajo» solo cuando:
+
+- no hay error del procesamiento,
+- `ResultadoProcesamiento.mes_vacio` es `False`,
+- `ResultadoProcesamiento.puede_exportar` es `True`.
+
+La exportación en sí la ejecuta `exportar_hoja` (que vuelve a validar). La ventana no replica esas
+reglas: solo decide habilitar la acción. Si un cuadre falla, el usuario ve el detalle en la vista de
+resumen y el botón queda deshabilitado.
+
+---
+
+## D-32. Cliente ingresado desde la interfaz por NIT
+
+Hasta la Fase 3 no hay lista de clientes persistida (SQLite se incorpora en Fase 3).
+
+**Decisión:** la ventana pide nombre y NIT al usuario; al procesar construye el `Cliente` con
+`tipo_identificacion="NIT"`. Si el NIT está vacío no procesa. Esto mantiene la regla de que el NIT es
+texto y se valida contra los documentos (C6) sin inventar datos.
+
+---
+
 ## Resumen de lo que necesito de ti
 
 | # | Decisión | Estado |
@@ -467,5 +507,8 @@ resultado. En esta máquina no está instalado, así que hoy se ejecuta como `sk
 | D-27 | Corrección de estilos medidos | aprobada |
 | D-28 | `''` y `None` equivalentes en la copia de `Dian` | aprobada |
 | D-29 | Recálculo con LibreOffice (se salta si no está) | aprobada |
+| D-30 | Procesamiento en `QThread` desde la ventana | aprobada |
+| D-31 | Botón de exportación solo habilitado si el mes puede exportarse | aprobada |
+| D-32 | Cliente ingresado desde la interfaz por NIT | aprobada |
 
 Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.

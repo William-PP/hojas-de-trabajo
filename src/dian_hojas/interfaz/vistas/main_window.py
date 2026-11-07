@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from decimal import Decimal
 
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import (
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QLineEdit,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
     QGridLayout,
@@ -21,9 +24,13 @@ from PySide6.QtWidgets import (
 
 from dian_hojas.aplicacion.exportar_hoja import ExportacionBloqueada, exportar_hoja
 from dian_hojas.aplicacion.procesar_mes import ResultadoProcesamiento
+from dian_hojas.aplicacion.sugerir_retefuente import sugerir_retefuente
+from dian_hojas.dominio.enums import Categoria
 from dian_hojas.dominio.modelos import Cliente, Periodo
 from dian_hojas.interfaz.viewmodels.procesar import HiloProcesar
+from dian_hojas.infraestructura.config_yaml import ConfigYaml
 from dian_hojas.infraestructura.escritor_xlsx import EscritorOpenpyxl
+from dian_hojas.infraestructura.repo_sqlite import RepoSqlite
 
 CODIGOS_CUADRES = (
     ("C1", "Cantidad de documentos"),
@@ -55,7 +62,14 @@ class VentanaPrincipal(QMainWindow):
         self._trabajo: HiloProcesar | None = None
         self._estado = QLabel("Ningún mes procesado todavía.")
         self._etiquetas: dict[str, QLabel] = {}
-
+        self._lista_no_clasificados = QListWidget()
+        self._tabla_retefuente = QTableWidget()
+        self.btn_confirmar_retefuente = QPushButton("Confirmar retenciones y exportar")
+        self.btn_confirmar_retefuente.clicked.connect(self._on_btn_confirmar_retefuente)
+        self.btn_confirmar_retefuente.setEnabled(False)
+        self._tabla_retefuente.itemChanged.connect(self._on_tabla_retefuente_changed)
+        self._config = ConfigYaml(Path(__file__).resolve().parents[3] / "reglas")
+        self._repo = RepoSqlite(Path.home() / ".dian_hojas" / "retefuente.sqlite")
         self._construir_ui()
         self._refrescar()
 
@@ -67,6 +81,8 @@ class VentanaPrincipal(QMainWindow):
         layout = QVBoxLayout(central)
         layout.addWidget(self._formulario())
         layout.addWidget(self._resumen())
+        layout.addWidget(self._tabla_retefuente)
+        layout.addWidget(self.btn_confirmar_retefuente)
         layout.addWidget(self._estado)
 
     def _formulario(self) -> QWidget:
@@ -140,6 +156,11 @@ class VentanaPrincipal(QMainWindow):
         return contenedor
 
     @property
+    def tabla_retefuente(self) -> QTableWidget:
+        """La tabla editable de retención: solo lectura de la vista, sin lógica de negocio."""
+        return self._tabla_retefuente
+
+    @property
     def trabajo(self) -> HiloProcesar | None:
         """El trabajador actual del hilo; útil para esperar sus señales en las pruebas."""
         return self._trabajo
@@ -178,6 +199,118 @@ class VentanaPrincipal(QMainWindow):
         self._lista_no_clasificados.clear()
         for documento in self._proceso.resultado.no_clasificados:
             self._lista_no_clasificados.addItem(f"{documento.prefijo + '-' if documento.prefijo else ''}{documento.folio}")
+
+        self._llenar_tabla_retefuente()
+
+    # --- Retención -----------------------------------------------------------------
+
+    def _compras_del_proceso(self):
+        if self._proceso is None:
+            return ()
+        return tuple(
+            d
+            for d in self._proceso.resultado.documentos
+            if d.categoria is Categoria.COMPRA
+        )
+
+    def _llenar_tabla_retefuente(self) -> None:
+        """Puebla la tabla editable con las sugerencias de retención del mes (si las hay)."""
+        self._tabla_retefuente.setRowCount(0)
+        self._tabla_retefuente.setColumnCount(8)
+        self._tabla_retefuente.setHorizontalHeaderLabels(
+            [
+                "CUFE",
+                "Proveedor (NIT)",
+                "Concepto",
+                "Base",
+                "Base mínima (UVT)",
+                "¿Supera?",
+                "Retención",
+                "Observaciones",
+            ]
+        )
+        if self._proceso is None:
+            return
+        compras = self._compras_del_proceso()
+        if not compras:
+            return
+        try:
+            sugerencia = sugerir_retefuente(
+                compras,
+                self._config.configuracion(self._periodo.anio if self._periodo else 2026),
+                self._repo,
+            )
+        except Exception as exc:  # pragma: no cover - el bloque de retención no debe tumbar la vista
+            self._estado.setText(f"No se pudieron calcular las retenciones: {exc}")
+            return
+
+        for linea in sugerencia.lineas:
+            fila = self._tabla_retefuente.rowCount()
+            self._tabla_retefuente.insertRow(fila)
+            valores = (
+                linea.documento.cufe if linea.documento else "",
+                linea.documento.nit_emisor if linea.documento else "",
+                linea.concepto,
+                float(linea.base),
+                float(linea.base_minima_uvt),
+                "Sí" if linea.supera_base else "No",
+                float(linea.retencion),
+                f"Proveedor {linea.documento.nit_emisor}" if linea.documento else "",
+            )
+            for columna, valor in enumerate(valores):
+                self._tabla_retefuente.setItem(fila, columna, QTableWidgetItem(str(valor)))
+
+    def _on_tabla_retefuente_changed(self, cambio) -> None:
+        """La edición de la tabla habilita la acción de confirmar."""
+        self.btn_confirmar_retefuente.setEnabled(True)
+
+    def _calcular_retefuente(self) -> RetefuenteMes:
+        """Calcula las retenciones sugeridas del mes procesado (decisión persistida incluida)."""
+        if self._proceso is None or self._periodo is None:
+            raise ValueError("No hay un mes procesado para retener.")
+        compras = self._compras_del_proceso()
+        if not compras:
+            return RetefuenteMes(lineas=(), total_retencion=Decimal("0"))
+        return sugerir_retefuente(
+            compras,
+            self._config.configuracion(self._periodo.anio),
+            self._repo,
+        )
+
+    def _on_btn_confirmar_retefuente(self) -> None:
+        """Confirma las retenciones sugeridas, persiste y exporta la hoja con ellas."""
+        if self._proceso is None or self._periodo is None:
+            return
+        if not self._compras_del_proceso():
+            self._estado.setText("No hay compras para retener en este mes.")
+            return
+        retefuente = self._calcular_retefuente()
+        filas = self._tabla_retefuente.rowCount()
+        for indice, linea in enumerate(retefuente.lineas):
+            if linea.documento is None or indice >= filas:
+                continue
+            item = self._tabla_retefuente.item(indice, 2)
+            concepto_elegido = (
+                item.text().strip() if item is not None and item.text().strip() else linea.concepto
+            )
+            self._repo.asignar_concepto(linea.documento.nit_emisor, concepto_elegido)
+        # Re-sugiere con las decisiones persistidas y exporta con el resultado confirmado.
+        retefuente = self._calcular_retefuente()
+        try:
+            exportar_hoja(
+                self._proceso,
+                self._cliente or Cliente(nombre="Cliente", numero="0"),
+                self._periodo,
+                Path(self._campo_carpeta.text()),
+                EscritorOpenpyxl(),
+                retefuente=retefuente,
+            )
+        except ExportacionBloqueada as exc:
+            self._error = str(exc)
+            self._estado.setText(f"No se pudo exportar: {exc}")
+        else:
+            self._error = None
+            self._estado.setText(f"Retenciones confirmadas y exportadas. Retención total: {retefuente.total_retencion}")
 
     # --- Procesamiento ------------------------------------------------------------
 
@@ -233,9 +366,21 @@ class VentanaPrincipal(QMainWindow):
     def _on_btn_exportar(self) -> None:
         if self._proceso is None or self._cliente is None or self._periodo is None:
             return
-        carpeta = Path(self._campo_carpeta.text())
         try:
-            ruta = exportar_hoja(self._proceso, self._cliente, self._periodo, carpeta, EscritorOpenpyxl())
+            retefuente = self._calcular_retefuente()
+        except Exception as exc:
+            self._error = str(exc)
+            self._estado.setText(f"No se pudo calcular la retención: {exc}")
+            return
+        try:
+            ruta = exportar_hoja(
+                self._proceso,
+                self._cliente,
+                self._periodo,
+                Path(self._campo_carpeta.text()),
+                EscritorOpenpyxl(),
+                retefuente=retefuente,
+            )
         except ExportacionBloqueada as exc:
             self._error = str(exc)
             self._estado.setText(f"No se pudo exportar: {exc}")
@@ -247,4 +392,11 @@ class VentanaPrincipal(QMainWindow):
         """Exporta la hoja de trabajo. Lanza `ExportacionBloqueada` si hay cuadre fallido."""
         if self._proceso is None or self._cliente is None or self._periodo is None:
             raise ValueError("No hay un mes procesado para exportar.")
-        return exportar_hoja(self._proceso, self._cliente, self._periodo, carpeta, EscritorOpenpyxl())
+        return exportar_hoja(
+            self._proceso,
+            self._cliente,
+            self._periodo,
+            carpeta,
+            EscritorOpenpyxl(),
+            retefuente=self._calcular_retefuente(),
+        )

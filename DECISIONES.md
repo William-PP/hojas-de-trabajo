@@ -506,6 +506,19 @@ Las columnas nuevas empiezan en la columna **U** (la pestaña `Retefuente` se ap
 
 ---
 
+## D-36. Tabla editable de retención en la interfaz
+
+La Fase 3 dejó lista la capa de negocio (`sugerir_retefuente`, `confirmar_retefuente`) y el escritor de
+la pestaña `Retefuente`, pero la **vista** no se conectaba todavía: faltaba la tabla editable que liste
+las compras con su sugerencia (concepto, base, mínima, ¿supera?, tarifa, retención, observaciones) y un
+botón de confirmar.
+
+**Decisión:** la ventana principal llena la tabla desde el resultado del procesamiento y, al confirmar,
+persiste las decisiones en el repositorio (proveedor → concepto) y reexporta la hoja con el resultado
+confirmado.
+
+---
+
 ## Resumen de lo que necesito de ti
 
 | # | Decisión | Estado |
@@ -545,5 +558,6 @@ Las columnas nuevas empiezan en la columna **U** (la pestaña `Retefuente` se ap
 | D-33 | Nombre de la pestaña `Retefuente` | aprobada |
 | D-34 | Valores ausentes en la configuración tributaria se consideran faltantes | aprobada |
 | D-35 | Pestaña `Retefuente [Mes]` y resumen | aprobada |
+| D-36 | Tabla editable de retención en la interfaz | aprobada |
 
 Lo único que sigue abierto es el YAML tributario de 2026 (D-18), y no hace falta hasta la Fase 3.

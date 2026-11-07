@@ -64,9 +64,20 @@ conceptos incompletos), sugerencia, confirmación, exportación con retefuente.
 
 ### Pendiente
 
-- La tabla **editable** en la interfaz (sugerencias `pendiente de confirmar`) — integración con la
-  vista de Fase 2.
 - El motor con tarifas reales (D-18) — requiere el YAML que te pido.
+
+### Cierre adicional de esta sesión
+
+- La **tabla editable** en la interfaz quedó implementada (cierra el pendiente anterior):
+  `VentanaPrincipal` llena `QTableWidget` con las sugerencias (CUFE, proveedor, concepto, base,
+  mínima, ¿supera?, retención, observaciones) y el botón «Confirmar retenciones y exportar»
+  persiste las decisiones en el `RepoSqlite` y reexporta con `retefuente=...`.
+- En esta integración se descubrió y se corrigió el uso de `QTableWidget.item(row, column)` frente a
+  `itemAt(row, column)` (el segundo no se comporta como se esperaba en PySide6); el handler de
+  confirmación ahora lee la columna de concepto con `item`.
+- La fuente de compras para la retención se limitó a `Categoria.COMPRA` (facturas, soportes y
+  equivalentes); las notas de crédito de compra (`DEVOLUCION_COMPRA`) quedan fuera por ahora y el
+  neteo de devoluciones se suma como punto pendiente del motor.
 
 ---
 

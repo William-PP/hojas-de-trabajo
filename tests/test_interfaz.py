@@ -15,6 +15,8 @@ import pytest
 
 from dian_hojas.aplicacion.procesar_mes import procesar_mes
 from dian_hojas.dominio.modelos import Cliente, Periodo
+from dian_hojas.infraestructura.config_yaml import ConfigYaml
+from dian_hojas.infraestructura.repo_sqlite import RepoSqlite
 from dian_hojas.interfaz.viewmodels.procesar import HiloProcesar
 from dian_hojas.interfaz.vistas import VentanaPrincipal
 
@@ -25,6 +27,89 @@ pytest.importorskip("pytestqt")
 
 CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
 PERIODO = Periodo(anio=2026, mes=10)
+
+
+# --- Retefuente: tabla editable en la ventana -------------------------------------------
+
+
+def _config_retefuente(tmp_path: Path) -> Path:
+    """Escribe un `reglas/2026.yaml` sintético para la ventana."""
+    directorio = tmp_path / "reglas"
+    directorio.mkdir(parents=True, exist_ok=True)
+    ruta = directorio / "2026.yaml"
+    ruta.write_text(
+        "anio: 2026\n"
+        "uvt_pesos: 220000\n"
+        "conceptos:\n"
+        "  compras:\n"
+        "    base_minima_uvt: 1\n"
+        "    tarifa: 0.05\n"
+        "  servicios:\n"
+        "    base_minima_uvt: 1\n"
+        "    tarifa: 0.05\n"
+        "  honorarios:\n"
+        "    base_minima_uvt: 1\n"
+        "    tarifa: 0.05\n"
+        "  arrendamientos:\n"
+        "    base_minima_uvt: 1\n"
+        "    tarifa: 0.05\n"
+        "  transporte:\n"
+        "    base_minima_uvt: 1\n"
+        "    tarifa: 0.05\n",
+        encoding="utf-8",
+    )
+    return ruta
+
+
+def _configurar_procesamiento_en_ventana(ventana, tmp_path: Path, ruta_listado_sintetico) -> None:
+    """Rellena el formulario y las dependencias (config + repo) de la ventana para un mes sintético."""
+    ventana._campo_ruta.setText(str(ruta_listado_sintetico))
+    ventana._campo_anio.setValue(2026)
+    ventana._campo_mes.setCurrentText("10")
+    ventana._campo_nombre.setText(CLIENTE.nombre)
+    ventana._campo_nit.setText(CLIENTE.numero)
+    ventana._campo_carpeta.setText(str(tmp_path / "salida"))
+    _config_retefuente(tmp_path)
+    ventana._config = ConfigYaml(tmp_path / "reglas")
+    ventana._repo = RepoSqlite(tmp_path / "retefuente.sqlite")
+    ventana._cliente = CLIENTE
+    ventana._periodo = PERIODO
+    ventana.procesar(ruta_listado_sintetico, CLIENTE, PERIODO)
+
+
+def test_procesar_llena_tabla_retefuente_con_sugerencias(qtbot, tmp_path, ruta_listado_sintetico):
+    ventana = VentanaPrincipal()
+    qtbot.addWidget(ventana)
+    _configurar_procesamiento_en_ventana(ventana, tmp_path, ruta_listado_sintetico)
+    trabajo = ventana.trabajo
+    qtbot.waitSignal(trabajo.termino, timeout=10000)
+    qtbot.wait(500)
+
+    assert ventana._proceso is not None
+    assert ventana._proceso.puede_exportar
+    assert ventana.tabla_retefuente.rowCount() > 0
+    # La primera fila lleva el CUFE de la primera compra y el concepto sugerido.
+    assert ventana.tabla_retefuente.item(0, 0).text()
+    assert ventana.tabla_retefuente.item(0, 2).text() == "compras"
+
+
+def test_confirmar_retefuente_exporta_hoja_con_retefuente(qtbot, tmp_path, ruta_listado_sintetico):
+    ventana = VentanaPrincipal()
+    qtbot.addWidget(ventana)
+    _configurar_procesamiento_en_ventana(ventana, tmp_path, ruta_listado_sintetico)
+    trabajo = ventana.trabajo
+    qtbot.waitSignal(trabajo.termino, timeout=10000)
+    qtbot.wait(500)
+
+    assert ventana._proceso is not None
+    assert ventana._proceso.puede_exportar
+    assert ventana.btn_confirmar_retefuente.isEnabled() is True
+
+    ventana.btn_confirmar_retefuente.click()
+    qtbot.wait(2000)
+
+    salidas = list((tmp_path / "salida").glob("*.xlsx"))
+    assert salidas, "el botón de confirmar retenciones debe generar el archivo exportado"
 
 
 # --- Ventana principal ----------------------------------------------------------------

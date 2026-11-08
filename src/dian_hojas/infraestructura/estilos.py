@@ -13,6 +13,7 @@ FUENTE = "Calibri"
 RELLENO_ENCABEZADO = PatternFill(fill_type="solid", fgColor="FF348441")
 RELLENO_TITULO = PatternFill(fill_type="solid", fgColor="FFDBE5F1")
 RELLENO_CLARO = PatternFill(fill_type="solid", fgColor="FFFFFFFF")
+RELLENO_PENDIENTE = PatternFill(fill_type="solid", fgColor="FFFFFF00")
 
 FUENTE_ENCABEZADO = Font(name=FUENTE, size=10, bold=True, color="FFFFFFFF")
 FUENTE_TITULO_GENERAL = Font(name=FUENTE, size=12, bold=True)
@@ -54,11 +55,12 @@ ANCHOS: dict[str, float] = {
     "R": 12.7,
     "S": 8.7,
     "T": 13.0,
-    "U": 20.0,
-    "V": 14.0,
+    "U": 12.1,
+    "V": 20.0,
     "W": 14.0,
-    "X": 12.0,
+    "X": 14.0,
     "Y": 12.0,
     "Z": 12.0,
-    "AA": 30.0,
+    "AA": 12.0,
+    "AB": 30.0,
 }

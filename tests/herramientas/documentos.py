@@ -26,7 +26,7 @@ def documento(**cambios: Any) -> DocumentoElectronico:
         "fecha_recepcion": datetime(2026, 10, 15, 9, 30, 0),
         "nit_emisor": "900123456",
         "nombre_emisor": "PROVEEDOR UNO",
-        "nit_receptor": "1020396459",
+        "nit_receptor": "900000001",
         "nombre_receptor": "CLIENTE UNO",
         "iva": Decimal("1900.00"),
         "total": Decimal("11900.00"),

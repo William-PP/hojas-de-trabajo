@@ -1,12 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-"""Empaquetado de la aplicación con PyInstaller.
+"""Empaquetado de la aplicación con PyInstaller (Windows 10/11).
 
     .venv\\Scripts\\python.exe -m PyInstaller dian_hojas.spec --noconfirm
 
 La carpeta `reglas/` **no** se incluye dentro del binario: se copia al lado del `.exe` para que el
 usuario pueda editarla (ver `docs/empaquetado.md`). El OCR es opcional; solo se incluyen sus
-módulos si están instalados al construir.
+módulos si están instalados al construir. El antivirus puede marcar falsos positivos por los
+empaquetadores de PyInstaller; eso no significa que el `.exe` tenga virus (ver README).
 """
 
 from importlib.util import find_spec
@@ -43,8 +44,6 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
 )
 
 coll = COLLECT(

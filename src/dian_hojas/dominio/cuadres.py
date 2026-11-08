@@ -27,6 +27,13 @@ class ResultadoCuadre:
     detalle: str
     bloqueante: bool = True
 
+    @property
+    def nivel(self) -> str:
+        """`ok` (verde), `alerta` (amarilla, no bloquea) o `error` (roja, bloquea)."""
+        if self.ok:
+            return "ok"
+        return "alerta" if not self.bloqueante else "error"
+
 
 def _resumen(items: list[str]) -> str:
     if len(items) <= MAX_LISTADOS:
@@ -40,7 +47,9 @@ def _referencia(documento: DocumentoElectronico) -> str:
 
 
 def _digitos(texto: str) -> str:
-    return _SOLO_DIGITOS.sub("", texto or "").lstrip("0")
+    """Dígitos sin separadores ni dígito de verificación (`900000001-1` → `900000001`)."""
+    base = (texto or "").split("-")[0]
+    return _SOLO_DIGITOS.sub("", base).lstrip("0")
 
 
 def _menciona(documento: DocumentoElectronico, cliente: Cliente) -> bool:
@@ -162,22 +171,43 @@ def cuadre_cliente(resultado: ResultadoMes, cliente: Cliente) -> ResultadoCuadre
 
 
 def cuadre_otros_impuestos(resultado: ResultadoMes) -> ResultadoCuadre:
-    """C7: sin ICA, INC, timbre u otros impuestos distintos de IVA.
+    """C7: alerta si hay ICA, INC, timbre u otros impuestos distintos de IVA.
 
-    Si alguno viene distinto de cero, `Total Neto = Total - IVA` deja de ser el valor
-    antes de IVA y el neto quedaría silenciosamente incorrecto.
+    Ya no bloquea la exportación (D-19 actualizado como D-47): el Neto ahora resta
+    `Total - IVA - Otros impuestos` con fórmula viva, y el usuario confirma de forma
+    explícita antes de exportar. Solo se bloquea si el Total no cuadra con sus
+    componentes (Total menor que IVA+Otros, o Neto negativo inexplicable).
     """
     afectados = [d for d in resultado.documentos if d.impuestos_otros != 0]
+    inexplicables = [
+        d
+        for d in afectados
+        if (d.total - d.iva - d.impuestos_otros) < -TOLERANCIA or d.total < 0
+    ]
+    detalle_afectados = (
+        "traen otros impuestos: "
+        + _resumen([f"{_referencia(d)} ({d.impuestos_otros})" for d in afectados])
+        if afectados
+        else "todos los impuestos distintos de IVA están en cero"
+    )
+    if inexplicables:
+        return ResultadoCuadre(
+            codigo="C7",
+            titulo="Solo IVA como impuesto",
+            ok=False,
+            detalle=(
+                "Total no cuadra con IVA + otros impuestos en: "
+                + _resumen([_referencia(d) for d in inexplicables])
+                + f" ({detalle_afectados})"
+            ),
+            bloqueante=True,
+        )
     return ResultadoCuadre(
         codigo="C7",
         titulo="Solo IVA como impuesto",
         ok=not afectados,
-        detalle=(
-            "traen otros impuestos: "
-            + _resumen([f"{_referencia(d)} ({d.impuestos_otros})" for d in afectados])
-            if afectados
-            else "todos los impuestos distintos de IVA están en cero"
-        ),
+        detalle=detalle_afectados,
+        bloqueante=False,
     )
 
 

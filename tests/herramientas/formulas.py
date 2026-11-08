@@ -14,6 +14,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 
 _SUM = re.compile(r"^=SUM\(([A-Z]{1,2})(\d+):([A-Z]{1,2})(\d+)\)$")
 _RESTA = re.compile(r"^=([A-Z]{1,2})(\d+)-([A-Z]{1,2})(\d+)$")
+_RESTA_DOS = re.compile(r"^=([A-Z]{1,2})(\d+)-([A-Z]{1,2})(\d+)-([A-Z]{1,2})(\d+)$")
 _CELDA = re.compile(r"^=([A-Z]{1,2})(\d+)$")
 
 
@@ -41,6 +42,14 @@ def _evaluar(ws, formula: str, vistos: tuple[str, ...]) -> float:
             sumando = valor(ws, f"{col_ini}{fila}", vistos)
             total += float(sumando or 0)
         return total
+
+    if (encontrado := _RESTA_DOS.match(formula)) is not None:
+        col_a, fila_a, col_b, fila_b, col_c, fila_c = encontrado.groups()
+        return (
+            float(valor(ws, f"{col_a}{fila_a}", vistos) or 0)
+            - float(valor(ws, f"{col_b}{fila_b}", vistos) or 0)
+            - float(valor(ws, f"{col_c}{fila_c}", vistos) or 0)
+        )
 
     if (encontrado := _RESTA.match(formula)) is not None:
         col_a, fila_a, col_b, fila_b = encontrado.groups()

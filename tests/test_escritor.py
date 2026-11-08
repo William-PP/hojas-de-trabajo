@@ -1,4 +1,4 @@
-"""Pruebas del escritor: estructura de las pestañas, fórmulas vivas y copia intacta de `Dian`."""
+﻿"""Pruebas del escritor: estructura de las pestañas, fórmulas vivas y copia intacta de `Dian`."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from dian_hojas.infraestructura.plantilla import ENCABEZADOS, TITULO_GENERAL
 from tests.herramientas.documentos import documento
 from tests.herramientas.formulas import valor
 
-CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
+CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="900000001")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
@@ -79,7 +79,7 @@ def test_dian_es_una_copia_intacta(libro, ruta_listado_sintetico):
 def test_cabecera(libro, hoja):
     ws = libro[hoja]
     assert ws["E1"].value == "Cliente Sintetico SAS"
-    assert ws["E2"].value == "NIT. 1.020.396.459"
+    assert ws["E2"].value == "NIT. 900.000.001"
     assert ws["E3"].value == "LISTADO DOCUMENTOS ELECTRONICOS DIAN OCTUBRE 2026"
     assert {str(m) for m in ws.merged_cells.ranges} == {"E1:S1", "E2:S2", "E3:S3"}
     assert [ws.cell(row=4, column=c).value for c in range(3, 21)] == list(ENCABEZADOS)
@@ -125,8 +125,17 @@ def test_sumatorias_no_tiene_marcas_dian_fisica(libro):
 
 def test_sumatorias_autofiltro_al_final(libro):
     ws = libro["Sumatorias"]
-    assert ws.auto_filter.ref == f"C4:T{ws.max_row}"
-    assert ws.max_row == 36
+    # D-51: Sumatorias tiene varios bloques y no lleva autofiltro.
+    assert ws.auto_filter.ref is None
+    assert ws.max_row == 40
+
+
+def test_autofiltro_solo_documentos(libro):
+    ws = libro["Ventas"]
+    # C4 hasta la última fila de datos del último bloque, sin totales ni netas.
+    assert ws.auto_filter.ref == "C4:U12"
+    ws2 = libro["Compras"]
+    assert ws2.auto_filter.ref is not None and ws2.auto_filter.ref.startswith("C4:U")
 
 
 def test_sumatorias_totales(libro):
@@ -159,9 +168,27 @@ def test_sumatorias_suma_de_bloques_igual_al_listado(libro, listado_sintetico):
     assert total_bloques == pytest.approx(4483833.36, abs=0.01)
 
 
+def test_compras_netas_es_formula_viva(libro):
+    ws = libro["Sumatorias"]
+    etiquetas = {ws.cell(row=f, column=15).value: f for f in range(5, ws.max_row + 1)}
+    assert "COMPRAS NETAS" in etiquetas
+    fila = etiquetas["COMPRAS NETAS"]
+    # Total neto de compras netas = TOTAL FACTURAS COMPRAS - TOTAL DEVOLUCIONES COMPRAS (D-50).
+    compras = etiquetas["TOTAL FACTURAS DE COMPRAS"]
+    devol = etiquetas["TOTAL DEVOLUCIONES EN COMPRAS"]
+    assert ws.cell(row=fila, column=18).value == f"=R{compras}-R{devol}"
+    compras_netas = float(valor(ws, f"R{fila}"))
+    esperado = float(valor(ws, f"R{compras}")) - float(valor(ws, f"R{devol}"))
+    assert compras_netas == pytest.approx(esperado)
+    # En Compras también está la línea.
+    compras_ws = libro["Compras"]
+    etiquetas_c = {compras_ws.cell(row=f, column=15).value: f for f in range(5, compras_ws.max_row + 1)}
+    assert "COMPRAS NETAS" in etiquetas_c
+
+
 def test_total_neto_es_formula(libro):
     ws = libro["Sumatorias"]
-    assert ws["Q8"].value == "=R8-P8"
+    assert ws["Q8"].value == "=R8-P8-U8"
     assert valor(ws, "Q8") == pytest.approx(460000.0)
 
 
@@ -176,7 +203,7 @@ def test_textos_copiados_tal_cual(libro):
     assert ws["F8"].value == "FV"
     assert ws["J8"].value == "20-10-2026"
     assert ws["K8"].value == "2026-10-20T10:42:17"
-    assert ws["L8"].value == "1020396459"
+    assert ws["L8"].value == "900000001"
     assert ws["T8"].value == "Emitido"
     assert ws["S8"].value == "Aprobado con notificación"
 
@@ -203,7 +230,7 @@ def test_orden_descendente_por_fecha_en_compras(libro):
 def test_dinero_en_columnas_p_r(libro):
     ws = libro["Compras"]
     assert ws["P6"].value == pytest.approx(26297.0)
-    assert ws["Q6"].value == "=R6-P6"
+    assert ws["Q6"].value == "=R6-P6-U6"
     assert ws["R6"].value == pytest.approx(164704.0)
     assert ws["P6"].number_format == '"$"\\ #,##0;[Red]\\-"$"\\ #,##0'
 
@@ -224,7 +251,7 @@ def test_ventas_lleva_ventas_y_devoluciones(libro):
     assert ws["O8"].value == "TOTAL FACTURAS VENTAS"
     assert ws["C11"].value == "DEVOLUCIONES EN VENTAS"
     assert ws["O13"].value == "TOTAL DEVOLUCIONES EN VENTAS"
-    assert ws.max_row == 13
+    assert ws.max_row == 15
 
 
 def test_marcas_dian_fisica(libro):
@@ -303,7 +330,7 @@ def test_bloques_vacios_se_omiten(tmp_path, ruta_listado_sintetico):
                 tipo_texto="Factura electrónica",
                 grupo_texto="Emitido",
                 fecha_emision=date(2026, 10, 10),
-                nit_emisor="1020396459",
+                nit_emisor="900000001",
             ),
         )
     )

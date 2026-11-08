@@ -79,7 +79,7 @@ class Cliente(BaseModel):
     numero: str                      # sin puntos, como texto
     digito_verificacion: str | None
     @property
-    def identificacion_formateada(self) -> str   # "NIT. 901.320.747-4"
+    def identificacion_formateada(self) -> str   # "NIT. 900.000.001-1"
 
 class Periodo(BaseModel):
     anio: int

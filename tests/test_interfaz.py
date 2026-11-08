@@ -1,4 +1,4 @@
-"""Pruebas de la interfaz (Fase 2): ventana principal, vista de resumen y procesamiento en hilo.
+﻿"""Pruebas de la interfaz (Fase 2): ventana principal, vista de resumen y procesamiento en hilo.
 
 Se salta si PySide6 o pytest-qt no están disponibles en el entorno. Corre con el platform
 `offscreen`, que permite construir widgets sin pantalla.
@@ -7,6 +7,7 @@ Se salta si PySide6 o pytest-qt no están disponibles en el entorno. Corre con e
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.gui
 pytest.importorskip("PySide6.QtWidgets")
 pytest.importorskip("pytestqt")
 
-CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
+CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="900000001")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
@@ -201,7 +202,7 @@ def test_ventana_guarda_perfil_y_lo_recupera(qtbot, tmp_path):
     qtbot.addWidget(ventana)
     ventana._repo = RepoSqlite(tmp_path / "memoria.sqlite")
     ventana._campo_nombre.setText("Cliente Perfil")
-    ventana._campo_nit.setText("1020396459")
+    ventana._campo_nit.setText("900000001")
     ventana._campo_carpeta.setText(str(tmp_path / "salida"))
 
     ventana._guardar_perfil()
@@ -210,7 +211,7 @@ def test_ventana_guarda_perfil_y_lo_recupera(qtbot, tmp_path):
     ventana._campo_nombre.setText("")
     ventana._on_perfil_cambiado(0)
     assert ventana._campo_nombre.text() == "Cliente Perfil"
-    assert ventana._campo_nit.text() == "1020396459"
+    assert ventana._campo_nit.text() == "900000001"
 
 
 def test_ventana_verifica_soportes_si_el_usuario_quiere(qtbot, tmp_path, ruta_listado_sintetico):
@@ -235,3 +236,56 @@ def test_ventana_verifica_soportes_si_el_usuario_quiere(qtbot, tmp_path, ruta_li
 
     assert compra.cufe in ventana.soportes_verificados
     assert "1" in ventana._estado.text()
+
+
+def test_reprocesar_corrigiendo_el_periodo_sin_cerrar(qtbot, tmp_path, ruta_listado_sintetico):
+    """Regresión: si se procesa con el mes equivocado y se corrige, el resultado nuevo manda.
+
+    Antes el hilo viejo llegaba tarde y pisaba la vista con el error del periodo anterior, por eso
+    había que cerrar y volver a abrir la aplicación para poder trabajar.
+    """
+    ventana = VentanaPrincipal()
+    qtbot.addWidget(ventana)
+    ventana._repo = RepoSqlite(tmp_path / "memoria.sqlite")
+    ventana._campo_ruta.setText(str(ruta_listado_sintetico))
+    ventana._campo_nit.setText(CLIENTE.numero)
+    ventana._campo_nombre.setText(CLIENTE.nombre)
+
+    # Intento 1: septiembre, pero el listado sintético es de octubre -> C5 en rojo.
+    ventana._campo_mes.setCurrentText("9")
+    ventana._on_btn_procesar()
+    trabajo_1 = ventana.trabajo
+    qtbot.waitSignal(trabajo_1.termino_generacion, timeout=10000)
+    qtbot.wait(300)
+
+    assert ventana._proceso is not None
+    assert not ventana._proceso.puede_exportar
+    assert ventana.btn_procesar.isEnabled()
+
+    # Intento 2: se corrige a octubre y el mismo hilo no debe pisar el resultado nuevo.
+    ventana._campo_mes.setCurrentText("10")
+    ventana._on_btn_procesar()
+    trabajo_2 = ventana.trabajo
+    qtbot.waitSignal(trabajo_2.termino_generacion, timeout=10000)
+    qtbot.wait(300)
+
+    assert ventana._proceso is not None
+    assert ventana._proceso.puede_exportar
+    assert ventana._error is None
+    assert "C5" not in [c.codigo for c in ventana._proceso.cuadres_fallidos]
+    assert ventana.btn_procesar.isEnabled()
+    assert "Revisa los cuadres" not in ventana._estado.text()
+    assert ventana.btn_exportar.isEnabled()
+
+
+def test_descargas_usa_qstandardpaths(qtbot):
+    from unittest.mock import patch
+
+    from PySide6.QtCore import QStandardPaths
+
+    from dian_hojas.interfaz.vistas.main_window import _carpeta_descargas
+
+    with patch.object(QStandardPaths, "writableLocation", return_value=r"D:\Descargas-QA") as mock:
+        # No existe en este equipo: el helper cae a Path.home().
+        assert _carpeta_descargas() == _carpeta_descargas()
+    mock.assert_called()

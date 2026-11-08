@@ -1,4 +1,4 @@
-"""Pruebas de los modelos: totales, periodo, identificación y agrupación."""
+﻿"""Pruebas de los modelos: totales, periodo, identificación y agrupación."""
 
 from datetime import date
 from decimal import Decimal
@@ -39,25 +39,25 @@ def test_periodo_contiene():
 
 
 def test_nombre_archivo():
-    cliente = Cliente(nombre="Cliente Demo S.A.S.", numero="901320747", digito_verificacion="4")
+    cliente = Cliente(nombre="Cliente Demo S.A.S.", numero="900000001", digito_verificacion="1")
     assert Periodo(anio=2026, mes=10).nombre_archivo(cliente) == (
         "10-Hoja_de_trabajo_Rtefte_Oct_2026_Cliente_Demo_S.A.S..xlsx"
     )
 
 
 def test_identificacion_nit():
-    cliente = Cliente(nombre="Cliente", numero="901320747", digito_verificacion="4")
-    assert cliente.identificacion_formateada == "NIT. 901.320.747-4"
+    cliente = Cliente(nombre="Cliente", numero="900000001", digito_verificacion="1")
+    assert cliente.identificacion_formateada == "NIT. 900.000.001-1"
 
 
 def test_identificacion_cedula():
-    cliente = Cliente(nombre="Cliente", tipo_identificacion="CC", numero="1020396459")
-    assert cliente.identificacion_formateada == "CC. 1.020.396.459"
+    cliente = Cliente(nombre="Cliente", tipo_identificacion="CC", numero="1000000001")
+    assert cliente.identificacion_formateada == "CC. 1.000.000.001"
 
 
 def test_identificacion_acepta_puntos():
-    cliente = Cliente(nombre="Cliente", numero="901.320.747", digito_verificacion="4")
-    assert cliente.identificacion_formateada == "NIT. 901.320.747-4"
+    cliente = Cliente(nombre="Cliente", numero="900.000.001", digito_verificacion="1")
+    assert cliente.identificacion_formateada == "NIT. 900.000.001-1"
 
 
 def test_agrupar_ordena_por_fecha_descendente():

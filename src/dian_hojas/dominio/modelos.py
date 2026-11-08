@@ -76,11 +76,12 @@ class Cliente(BaseModel):
     @property
     def numero_digitos(self) -> str:
         """Solo los dígitos del número, sin puntos, guiones ni dígito de verificación."""
-        return _SOLO_DIGITOS.sub("", self.numero)
+        base = (self.numero or "").split("-")[0]
+        return _SOLO_DIGITOS.sub("", base)
 
     @property
     def identificacion_formateada(self) -> str:
-        """`NIT. 901.320.747-4` o `CC. 1.020.396.459`."""
+        """`NIT. 900.000.001-1` o `CC. 1.000.000.001`."""
         digitos = self.numero_digitos
         with_dots = f"{int(digitos):,}".replace(",", ".") if digitos.isdigit() else digitos
         texto = f"{self.tipo_identificacion}. {with_dots}"
@@ -177,7 +178,7 @@ class DocumentoElectronico(BaseModel):
 
     @property
     def total_neto(self) -> Decimal:
-        return self.total - self.iva
+        return self.total - self.iva - self.impuestos_otros
 
     @property
     def bloque(self) -> Bloque | None:

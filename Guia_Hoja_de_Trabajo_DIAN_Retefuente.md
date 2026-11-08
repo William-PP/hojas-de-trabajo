@@ -136,7 +136,7 @@ Dian  →  Sumatorias  →  Ventas  →  Compras  →  Retefuente [Mes]
 2. Inserta **2 columnas** a la izquierda (queda un margen de A:B) para que la tabla empiece en la columna C.
 3. En las filas 1 a 3, combina celdas (E:S) y escribe el encabezado:
    - Fila 1: **Nombre del cliente**
-   - Fila 2: **NIT** (formato `NIT. 1.020.396.459`)
+   - Fila 2: **NIT** (formato `NIT. 900.000.001-1`)
    - Fila 3: **LISTADO DOCUMENTOS ELECTRONICOS DIAN [MES] [AÑO]**
 4. Fila 4: encabezados de la tabla (columnas C a T):
 

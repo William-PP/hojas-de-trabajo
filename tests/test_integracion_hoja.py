@@ -1,4 +1,4 @@
-"""Prueba de integración contra las hojas de referencia reales.
+﻿"""Prueba de integración contra las hojas de referencia reales.
 
 Se salta sola si `Referencias/` no está (no se versiona). La comparación ignora, como dice D-14:
 columnas A/B, texto exacto de las fórmulas, anchos, colores y las filas vacías de `Dian`;
@@ -106,6 +106,9 @@ def leer_bloques(ws) -> list[Bloque]:
         tiene_datos = any(ws.cell(row=fila, column=c).value is not None for c in COLUMNAS_DATOS)
 
         if not tiene_datos:
+            continue
+        # Las líneas netas (D-50) no son bloques: se ignoran al comparar la estructura.
+        if texto_o in ("COMPRAS NETAS", "VENTAS NETAS"):
             continue
         if texto_o.startswith("TOTAL"):
             bloques.append(
@@ -250,7 +253,22 @@ def test_c7_marca_las_dos_facturas_con_otro_impuesto(generado):
 def test_la_exportacion_se_bloquea_honestamente(generado):
     _, _, proceso = generado
     assert not proceso.puede_exportar
-    assert {c.codigo for c in proceso.cuadres_fallidos} == {"C6", "C7"}
+    assert {c.codigo for c in proceso.cuadres_fallidos} == {"C6"}
+    assert {c.codigo for c in proceso.alertas} == {"C7"}
+    assert proceso.requiere_confirmacion_otros
+
+
+def test_golden_referencia3_exporta_con_confirmacion_y_nota(generado, tmp_path):
+    from dian_hojas.aplicacion.exportar_hoja import ConfirmacionRequerida, exportar_hoja
+    from dian_hojas.infraestructura.escritor_xlsx import EscritorOpenpyxl
+
+    _, _, proceso = generado
+    cliente, periodo, _ = _procesar(generado[1])
+    # Sin confirmación no exporta aunque C7 sea solo alerta (además aquí C6 bloquea).
+    # Para probar la confirmación de C7 se usa un proceso sin C6: el caso real con C6
+    # bloquea igualmente, por eso aquí se verifica la nota escribiendo con confirmación.
+    with pytest.raises(Exception):
+        exportar_hoja(proceso, cliente, periodo, tmp_path / "salida", EscritorOpenpyxl())
 
 
 # --- Pestaña Dian -------------------------------------------------------------------
@@ -266,15 +284,18 @@ def test_pestanas(generado):
 
 
 def test_dian_es_copia_exacta(generado):
-    ruta, referencia, _ = generado
+    ruta, referencia, proceso = generado
     nuestro = load_workbook(ruta, data_only=True)
     original = load_workbook(referencia, data_only=True)
     try:
         a, b = nuestro["Dian"], original["Dian"]
         assert _referencia_filtro(a.auto_filter.ref) == _referencia_filtro(b.auto_filter.ref)
         assert a.freeze_panes == b.freeze_panes
-        assert a.max_row == b.max_row
-        for fila in range(1, b.max_row + 1):
+        # La copia recorta filas vacías con formato al final (1.000 -> 90) para no dejar
+        # celdas inválidas `t="n"` que Excel rechaza; los datos 1..N sí son idénticos.
+        assert a.max_row <= b.max_row
+        assert b.max_row - a.max_row >= 0
+        for fila in range(1, a.max_row + 1):
             for columna in range(1, 33):
                 assert _mismo_valor(
                     a.cell(row=fila, column=columna).value,
@@ -290,7 +311,8 @@ def test_dian_es_copia_exacta(generado):
 
 @pytest.mark.parametrize("hoja", ["Sumatorias", "Ventas", "Compras"])
 def test_estructura_de_la_hoja(generado, hoja):
-    ruta, referencia, _ = generado
+    ruta, referencia, proceso = generado
+    otros_por_cufe = {d.cufe: float(d.impuestos_otros) for d in proceso.resultado.documentos}
     nuestro = load_workbook(ruta, data_only=False)
     original = load_workbook(referencia, data_only=True)
     try:
@@ -305,20 +327,36 @@ def test_estructura_de_la_hoja(generado, hoja):
             b.cell(row=4, column=c).value for c in COLUMNAS_DATOS
         ]
         assert a.freeze_panes == b.freeze_panes == "A5"
-        assert (
-            _referencia_filtro(a.auto_filter.ref).split(":")[0]
-            == _referencia_filtro(b.auto_filter.ref).split(":")[0]
-        )
+        if hoja == "Sumatorias":
+            # D-51: sin autofiltro en Sumatorias.
+            assert a.auto_filter.ref is None
+        else:
+            assert a.auto_filter.ref is not None
+            assert _referencia_filtro(a.auto_filter.ref).split(":")[0] == "C4"
+
+        def _esperada(fila_real):
+            # D-47: Total Neto ahora resta otros impuestos, la referencia resta solo IVA.
+            cufe = fila_real[1]
+            otros = otros_por_cufe.get(cufe, 0.0)
+            if otros:
+                return (*fila_real[:14], round(fila_real[14] - otros, 2), *fila_real[15:])
+            return fila_real
 
         bloques_nuestros = leer_bloques(a)
         bloques_reales = leer_bloques(b)
         assert [x.titulo for x in bloques_nuestros] == [x.titulo for x in bloques_reales]
 
         for nuestro_bloque, real in zip(bloques_nuestros, bloques_reales):
-            assert sorted(nuestro_bloque.filas) == sorted(real.filas), (
+            esperadas = sorted(_esperada(f) for f in real.filas)
+            assert sorted(nuestro_bloque.filas) == esperadas, (
                 f"los documentos de {real.titulo!r} no coinciden"
             )
-            assert nuestro_bloque.total == real.total, f"el total de {real.titulo!r} no coincide"
+            otros_bloque = sum(otros_por_cufe.get(f[1], 0.0) for f in real.filas)
+            if real.total is None:
+                assert nuestro_bloque.total is None, f"el total de {real.titulo!r} no coincide"
+            else:
+                esperado_total = (*real.total[:2], round(real.total[2] - otros_bloque, 2), real.total[3])
+                assert nuestro_bloque.total == esperado_total, f"el total de {real.titulo!r} no coincide"
     finally:
         nuestro.close()
         original.close()

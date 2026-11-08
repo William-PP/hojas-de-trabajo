@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from dian_hojas.dominio.retefuente import LineaRetefuente, RetefuenteMes, retefuente_mes
 from dian_hojas.dominio.modelos import DocumentoElectronico
 from dian_hojas.puertos import RepositorioProveedores
 from dian_hojas.reglas.configuracion import ConfiguracionTributaria, ErrorConfiguracion
 
 CONCEPTO_DEFAULT = "compras"
+EXCEPCIONES = {"no aplica", "no_aplica", "autorretenedor", "no sujeto", "no sujeto a retencion", "no sujeto a retención"}
+
+
+def _es_excepcion(concepto: str) -> bool:
+    return concepto.strip().lower() in EXCEPCIONES
 
 
 def sugerir_retefuente(
@@ -18,12 +25,33 @@ def sugerir_retefuente(
     """Sugiere el concepto y calcula la retención de cada compra.
 
     El concepto sugerido viene del repositorio (proveedor → concepto); si el proveedor no tiene
-    decisión, se sugiere el concepto por defecto del año en la configuración.
+    decisión, se sugiere el concepto por defecto del año en la configuración. Toda línea nace
+    **pendiente de confirmar** (`confirmada=False`, regla 5).
+
+    Si el proveedor está marcado como excepción (`no aplica` / `autorretenedor`), la línea queda
+    con tarifa 0 y sin retención, sin exigir entrada en la configuración.
     """
     lineas: list[LineaRetefuente] = []
     for documento in documentos_compras:
         concepto = repo.concepto_de_proveedor(documento.nit_emisor) or CONCEPTO_DEFAULT
-        definicion = configuracion.conceptos.get(concepto)
+        if _es_excepcion(concepto):
+            linea = LineaRetefuente.crear(
+                documento,
+                concepto,
+                documento.total_neto,
+                Decimal("0"),
+                Decimal("0"),
+                configuracion.uvt_pesos,
+                confirmada=False,
+            )
+            lineas.append(linea)
+            continue
+        # Conceptos nuevos y existentes se resuelven igual: clave normalizada a minúsculas.
+        clave = concepto.strip().lower()
+        definicion = next(
+            (v for k, v in configuracion.conceptos.items() if k.strip().lower() == clave),
+            None,
+        )
         if definicion is None:
             raise ErrorConfiguracion(
                 f"Falta el concepto {concepto!r} en la configuración tributaria del año "
@@ -36,6 +64,18 @@ def sugerir_retefuente(
             definicion.base_minima_uvt,
             definicion.tarifa,
             configuracion.uvt_pesos,
+            confirmada=False,
         )
         lineas.append(linea)
-    return retefuente_mes(lineas)
+    parametros = tuple(
+        sorted(
+            (nombre, dato.base_minima_uvt, dato.tarifa)
+            for nombre, dato in configuracion.conceptos.items()
+        )
+    )
+    return retefuente_mes(
+        lineas,
+        anio=configuracion.anio,
+        uvt_pesos=configuracion.uvt_pesos,
+        conceptos=parametros,
+    )

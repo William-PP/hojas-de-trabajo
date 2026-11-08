@@ -13,7 +13,5 @@ dist/
 # Datos de clientes: NUNCA versionar (regla 10 de AGENTS.md)
 Referencias/
 *.xlsm
-
-# Salidas generadas
+*.sqlite
 salidas/
-*.log

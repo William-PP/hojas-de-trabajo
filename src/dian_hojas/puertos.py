@@ -32,6 +32,7 @@ class EscritorHoja(Protocol):
         ruta_listado: Path,
         retefuente: object | None = None,
         soportes_verificados: Collection[str] | None = None,
+        otros_confirmados: bool = False,
     ) -> Path: ...
 
 

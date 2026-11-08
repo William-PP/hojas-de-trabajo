@@ -22,6 +22,7 @@ class LineaRetefuente:
     tarifa: Decimal
     supera_base: bool
     retencion: Decimal
+    confirmada: bool = False
 
     @classmethod
     def crear(
@@ -32,7 +33,10 @@ class LineaRetefuente:
         base_minima_uvt: Decimal,
         tarifa: Decimal,
         uvt: Decimal,
+        confirmada: bool = False,
     ) -> "LineaRetefuente":
+        # TODO (D-49): ¿la base mínima se compara con >= o >? Confirmar con el contador.
+        # Hoy es >=: base == base_minima_uvt * uvt ya supera. No cambiar sin esa confirmación.
         supera_base = base >= base_minima_uvt * uvt
         return cls(
             documento=documento,
@@ -42,6 +46,7 @@ class LineaRetefuente:
             tarifa=tarifa,
             supera_base=supera_base,
             retencion=base * tarifa if supera_base else CERO,
+            confirmada=confirmada,
         )
 
 
@@ -51,6 +56,21 @@ class RetefuenteMes:
 
     lineas: tuple[LineaRetefuente, ...]
     total_retencion: Decimal
+    anio: int | None = None
+    uvt_pesos: Decimal | None = None
+    conceptos: tuple[tuple[str, Decimal, Decimal], ...] = ()
+
+    @property
+    def pendientes(self) -> tuple[LineaRetefuente, ...]:
+        return tuple(l for l in self.lineas if not l.confirmada)
+
+    @property
+    def hay_pendientes(self) -> bool:
+        return any(not l.confirmada for l in self.lineas)
+
+    @property
+    def cantidad_pendientes(self) -> int:
+        return len(self.pendientes)
 
 
 def crear_linea(
@@ -75,7 +95,19 @@ def total_retencion(lineas: Iterable[LineaRetefuente]) -> Decimal:
     return sum((linea.retencion for linea in lineas), CERO)
 
 
-def retefuente_mes(lineas: Iterable[LineaRetefuente]) -> RetefuenteMes:
+def retefuente_mes(
+    lineas: Iterable[LineaRetefuente],
+    *,
+    anio: int | None = None,
+    uvt_pesos: Decimal | None = None,
+    conceptos: tuple[tuple[str, Decimal, Decimal], ...] = (),
+) -> RetefuenteMes:
     """Resultado del mes: líneas y retención total a declarar."""
     lineas_finales = tuple(lineas)
-    return RetefuenteMes(lineas=lineas_finales, total_retencion=total_retencion(lineas_finales))
+    return RetefuenteMes(
+        lineas=lineas_finales,
+        total_retencion=total_retencion(lineas_finales),
+        anio=anio,
+        uvt_pesos=uvt_pesos,
+        conceptos=conceptos,
+    )

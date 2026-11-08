@@ -31,6 +31,16 @@ class ResultadoProcesamiento:
         return tuple(c for c in self.cuadres if not c.ok and c.bloqueante)
 
     @property
+    def alertas(self) -> tuple[ResultadoCuadre, ...]:
+        """Cuadres que fallan pero no bloquean (C7 con otros impuestos, D-47)."""
+        return tuple(c for c in self.cuadres if not c.ok and not c.bloqueante)
+
+    @property
+    def requiere_confirmacion_otros(self) -> bool:
+        """Hay otros impuestos y el usuario debe confirmar antes de exportar."""
+        return bool(self.alertas)
+
+    @property
     def puede_exportar(self) -> bool:
         return not self.mes_vacio and not hay_cuadres_fallidos(self.cuadres)
 

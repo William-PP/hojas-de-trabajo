@@ -1,4 +1,4 @@
-"""Pruebas del motor de retención, la configuración tributaria y la pestaña `Retefuente`.
+﻿"""Pruebas del motor de retención, la configuración tributaria y la pestaña `Retefuente`.
 
 Fase 3. Las tarifas y bases mínimas salen siempre del YAML (D-18/D-24); aquí se usan valores
 sintéticos para probar el motor sin tocar los datos reales.
@@ -31,7 +31,7 @@ from dian_hojas.reglas.configuracion import (
 )
 from tests.herramientas.documentos import documento
 
-CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
+CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="900000001")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
@@ -141,8 +141,12 @@ def test_exportar_hoja_escribe_la_pestaña_retefuente(tmp_path, ruta_listado_sin
                 Decimal("1"),
                 Decimal("0.05"),
                 Decimal("220000"),
+                confirmada=True,
             ),
-        )
+        ),
+        anio=2026,
+        uvt_pesos=Decimal("220000"),
+        conceptos=(("compras", Decimal("1"), Decimal("0.05")),),
     )
     salida = exportar_hoja(
         proceso,
@@ -151,16 +155,72 @@ def test_exportar_hoja_escribe_la_pestaña_retefuente(tmp_path, ruta_listado_sin
         tmp_path / "salida",
         EscritorOpenpyxl(),
         retefuente=retefuente,
+        confirmar_pendientes=True,
     )
     wb = load_workbook(salida)
     try:
         assert "Retefuente Octubre" in wb.sheetnames
         ws = wb["Retefuente Octubre"]
-        assert ws["U5"].value == "compras"
-        assert ws["Z5"].value == 50000
-        assert ws["U6"].value == "compras"
-        assert ws["Z6"].value == 50000
-        assert ws["U7"].value == "TOTAL RETENCIÓN A DECLARAR"
-        assert ws["Z7"].value == 50000
+        assert ws["V5"].value == "compras"
+        assert ws["AA5"].value == 50000
+        assert ws["V6"].value == "compras"
+        assert ws["AA6"].value == 50000
+        assert ws["V7"].value == "TOTAL RETENCIÓN A DECLARAR"
+        assert ws["AA7"].value == 50000
+        assert ws["V8"].value is not None and "2026" in str(ws["V8"].value)
     finally:
         wb.close()
+
+
+def test_pendiente_marca_color_y_provisional(tmp_path, ruta_listado_sintetico):
+    proceso = procesar_mes(ruta_listado_sintetico, CLIENTE, PERIODO, LectorDianXlsx())
+    retefuente = retefuente_mes(
+        (
+            LineaRetefuente.crear(
+                next(d for d in proceso.resultado.documentos if d.categoria is Categoria.COMPRA),
+                "compras",
+                Decimal("1000000"),
+                Decimal("1"),
+                Decimal("0.05"),
+                Decimal("220000"),
+            ),
+        ),
+        anio=2026,
+        uvt_pesos=Decimal("220000"),
+        conceptos=(("compras", Decimal("1"), Decimal("0.05")),),
+    )
+    assert retefuente.hay_pendientes
+    from dian_hojas.aplicacion.exportar_hoja import ConfirmacionRequerida
+
+    with pytest.raises(ConfirmacionRequerida):
+        exportar_hoja(proceso, CLIENTE, PERIODO, tmp_path / "salida", EscritorOpenpyxl(), retefuente=retefuente)
+    salida = exportar_hoja(
+        proceso, CLIENTE, PERIODO, tmp_path / "salida", EscritorOpenpyxl(),
+        retefuente=retefuente, confirmar_pendientes=True,
+    )
+    wb = load_workbook(salida)
+    try:
+        ws = wb["Retefuente Octubre"]
+        assert "PENDIENTE DE CONFIRMAR" in str(ws["V5"].value)
+        assert "PROVISIONAL" in str(ws["V7"].value)
+    finally:
+        wb.close()
+
+
+def test_concepto_nuevo_y_excepcion_proveedor(tmp_path):
+    ruta = _yaml(tmp_path)
+    texto = ruta.read_text(encoding="utf-8")
+    ruta.write_text(texto + "  utilidades:\n    base_minima_uvt: 2\n    tarifa: 0.03\n", encoding="utf-8")
+    config = cargar_configuracion(2026, ruta)
+    assert "utilidades" in config.conceptos
+
+    from tests.herramientas.listado_sintetico import crear_listado
+
+    ruta_listado = crear_listado(tmp_path / "listado.xlsx")
+    listado = LectorDianXlsx().leer(ruta_listado)
+    compras = tuple(d for d in listado.documentos if d.categoria is Categoria.COMPRA)
+    repo = RepoSqlite(tmp_path / "proveedores.sqlite")
+    repo.asignar_concepto(compras[0].nit_emisor, "no aplica")
+    sugerencia = sugerir_retefuente(compras, config, repo)
+    excepcion = next(l for l in sugerencia.lineas if l.documento is not None and l.documento.nit_emisor == compras[0].nit_emisor)
+    assert excepcion.retencion == Decimal("0")

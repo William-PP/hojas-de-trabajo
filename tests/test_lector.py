@@ -1,4 +1,4 @@
-"""Pruebas del lector del listado de la DIAN.
+﻿"""Pruebas del lector del listado de la DIAN.
 
 Cubren lo que puede venir mal: encabezados, tipos, fechas, archivos vacíos y archivos que
 no son el listado. Un archivo mal leído nunca debe pasar en silencio.
@@ -80,7 +80,7 @@ def test_folio_y_nit_se_conservan_como_texto(listado_sintetico):
     assert "C0039827" in por_folio
 
     venta = por_folio["197"]
-    assert venta.nit_emisor == "1020396459"
+    assert venta.nit_emisor == "900000001"
     assert isinstance(venta.nit_emisor, str)
     assert isinstance(venta.folio, str)
 

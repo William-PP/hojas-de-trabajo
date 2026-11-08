@@ -1,4 +1,4 @@
-"""Pruebas de los casos de uso: procesar el mes y exportar con nombre estándar."""
+﻿"""Pruebas de los casos de uso: procesar el mes y exportar con nombre estándar."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from dian_hojas.infraestructura.escritor_xlsx import EscritorOpenpyxl
 from dian_hojas.infraestructura.lector_dian_xlsx import LectorDianXlsx
 from tests.herramientas.listado_sintetico import crear_listado
 
-CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="1020396459")
+CLIENTE = Cliente(nombre="Cliente Sintetico SAS", numero="900000001")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
@@ -62,8 +62,10 @@ def test_una_fecha_fuera_del_mes_bloquea(tmp_path):
 def test_otros_impuestos_bloquean(tmp_path):
     ruta = crear_listado(tmp_path / "inc.xlsx", otros_impuestos=True)
     proceso = procesar(ruta)
-    assert not proceso.puede_exportar
-    assert "C7" in {c.codigo for c in proceso.cuadres_fallidos}
+    assert proceso.puede_exportar
+    assert "C7" in {c.codigo for c in proceso.alertas}
+    assert "C7" not in {c.codigo for c in proceso.cuadres_fallidos}
+    assert proceso.requiere_confirmacion_otros
 
 
 def test_cufe_duplicado_bloquea(tmp_path):
@@ -139,9 +141,45 @@ def test_no_exporta_un_mes_vacio(tmp_path):
 
 
 def test_cuadre_fallido_lleva_el_detalle(tmp_path):
-    ruta_listado = crear_listado(tmp_path / "inc.xlsx", otros_impuestos=True)
+    ruta_listado = crear_listado(tmp_path / "raro.xlsx", desconocido=True)
     proceso = procesar(ruta_listado)
     with pytest.raises(CuadreFallido) as info:
         exportar_hoja(proceso, CLIENTE, PERIODO, tmp_path / "salida", EscritorOpenpyxl())
-    assert "C7" in str(info.value)
-    assert "impuestos" in str(info.value)
+    assert "C1" in str(info.value)
+
+
+def test_exportar_con_otros_requiere_confirmacion(tmp_path):
+    from dian_hojas.aplicacion.exportar_hoja import ConfirmacionRequerida
+    from openpyxl import load_workbook
+
+    ruta_listado = crear_listado(tmp_path / "inc.xlsx", otros_impuestos=True)
+    proceso = procesar(ruta_listado)
+    assert proceso.requiere_confirmacion_otros
+    with pytest.raises(ConfirmacionRequerida):
+        exportar_hoja(proceso, CLIENTE, PERIODO, tmp_path / "salida", EscritorOpenpyxl())
+    assert list((tmp_path / "salida").glob("*.xlsx")) == []
+
+    ruta = exportar_hoja(
+        proceso,
+        CLIENTE,
+        PERIODO,
+        tmp_path / "salida",
+        EscritorOpenpyxl(),
+        confirmar_otros_impuestos=True,
+    )
+    wb = load_workbook(ruta, data_only=False)
+    try:
+        ws = wb["Sumatorias"]
+        assert ws["C1"].value is not None and "C7" in str(ws["C1"].value)
+        assert ws["U4"].value == "Otros impuestos"
+    finally:
+        wb.close()
+
+
+def test_salida_existente_no_sobrescribe(ruta_listado_sintetico, tmp_path):
+    proceso = procesar(ruta_listado_sintetico)
+    carpeta = tmp_path / "salida"
+    primera = exportar_hoja(proceso, CLIENTE, PERIODO, carpeta, EscritorOpenpyxl())
+    segunda = exportar_hoja(proceso, CLIENTE, PERIODO, carpeta, EscritorOpenpyxl())
+    assert primera.is_file() and segunda.is_file()
+    assert primera != segunda and segunda.name.endswith("_v2.xlsx")

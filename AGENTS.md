@@ -101,7 +101,7 @@ Replica la hoja de referencia (`fixtures/hoja_referencia_oct_2026.xlsx`). Usa es
 - Tabla en columnas **C a T**; columnas A y B reservadas para márgenes.
 - Filas 1–3 con celdas combinadas `E1:S1`, `E2:S2`, `E3:S3`:
   - Fila 1: nombre del cliente.
-  - Fila 2: `NIT. 1.020.396.459` (formato con puntos).
+  - Fila 2: `NIT. 900.000.001-1` (formato con puntos).
   - Fila 3: `LISTADO DOCUMENTOS ELECTRONICOS DIAN [MES EN MAYÚSCULAS] [AÑO]`.
 - Fila 4, encabezados (C a T):
   `Tipo de documento | CUFE/CUDE | Folio | Prefijo | Divisa | Forma de Pago | Medio de Pago | Fecha Emisión | Fecha Recepción | NIT Emisor | Nombre Emisor | NIT Receptor | Nombre Receptor | IVA | Total Neto | Total | Estado | Grupo`

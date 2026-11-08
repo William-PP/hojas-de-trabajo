@@ -22,21 +22,36 @@ class HiloProcesar(QObject):
     termino = Signal(object)
     error = Signal(str)
     finished = Signal()
+    # Las mismas señales, con un número de generación para descartar resultados viejos:
+    # si el usuario reprocesa, lo que llegue tarde del intento anterior no debe pisar la vista.
+    termino_generacion = Signal(object, int)
+    error_generacion = Signal(str, int)
 
-    def __init__(self, ruta: Path, cliente: Cliente, periodo: Periodo) -> None:
+    def __init__(
+        self,
+        ruta: Path,
+        cliente: Cliente,
+        periodo: Periodo,
+        generacion: int = 0,
+    ) -> None:
         super().__init__()
         self._ruta = Path(ruta)
         self._cliente = cliente
         self._periodo = periodo
+        self.generacion = generacion
 
     @Slot()
     def trabajar(self) -> None:
         try:
             self._resultado = procesar_mes(self._ruta, self._cliente, self._periodo, LectorDianXlsx())
         except Exception as exc:  # pragma: no cover - el hilo no depura excepciones Qt
-            self.error.emit(f"No se pudo procesar el listado: {exc}")
+            mensaje = f"No se pudo procesar el listado: {exc}"
+            self.error.emit(mensaje)
+            self.error_generacion.emit(mensaje, self.generacion)
             self.termino.emit(None)
+            self.termino_generacion.emit(None, self.generacion)
         else:
             self.termino.emit(self._resultado)
+            self.termino_generacion.emit(self._resultado, self.generacion)
         finally:
             self.finished.emit()

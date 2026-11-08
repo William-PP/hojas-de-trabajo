@@ -1,4 +1,4 @@
-"""Pruebas de los siete cuadres."""
+﻿"""Pruebas de los siete cuadres."""
 
 from datetime import date
 from decimal import Decimal
@@ -18,7 +18,7 @@ from dian_hojas.dominio.enums import Bloque
 from dian_hojas.dominio.modelos import Cliente, Periodo, ResultadoMes, construir_resultado
 from tests.herramientas.documentos import documento
 
-CLIENTE = Cliente(nombre="Cliente Uno", numero="1020396459")
+CLIENTE = Cliente(nombre="Cliente Uno", numero="900000001")
 PERIODO = Periodo(anio=2026, mes=10)
 
 
@@ -121,13 +121,25 @@ def test_c6_cliente_ausente():
 
 
 def test_c6_cliente_con_nit_de_verificacion_y_puntos():
-    cliente = Cliente(nombre="Cliente", numero="901.320.747", digito_verificacion="4")
-    docs = [documento(indice=0, cufe="a", nit_emisor="901320747", nit_receptor="1020396459")]
+    cliente = Cliente(nombre="Cliente", numero="900.000.001", digito_verificacion="1")
+    docs = [documento(indice=0, cufe="a", nit_emisor="900000001")]
     assert cuadre_cliente(resultado(*docs), cliente).ok
 
 
+def test_c6_sin_dv_y_con_dv_coinciden():
+    # D-52: C6 compara sin DV, sin puntos ni guiones, en ambos lados.
+    cliente_con_dv = Cliente(nombre="C", numero="900.000.001-1")
+    cliente_sin_dv = Cliente(nombre="C", numero="900000001")
+    doc_con_dv = documento(indice=0, cufe="a", nit_receptor="900.000.001-1")
+    doc_sin_dv = documento(indice=0, cufe="a", nit_receptor="900000001")
+    assert cuadre_cliente(resultado(doc_sin_dv), cliente_con_dv).ok
+    assert cuadre_cliente(resultado(doc_con_dv), cliente_sin_dv).ok
+    assert cuadre_cliente(resultado(doc_con_dv), cliente_con_dv).ok
+    assert not cuadre_cliente(resultado(doc_sin_dv), Cliente(nombre="C", numero="900000002")).ok
+
+
 def test_c6_cliente_como_receptor():
-    docs = [documento(indice=0, cufe="a", nit_receptor="1020396459")]
+    docs = [documento(indice=0, cufe="a", nit_receptor="900000001")]
     assert cuadre_cliente(resultado(*docs), CLIENTE).ok
 
 
@@ -138,7 +150,28 @@ def test_c7_otros_impuestos():
     ]
     cuadre = cuadre_otros_impuestos(resultado(*docs))
     assert not cuadre.ok
+    assert not cuadre.bloqueante
+    assert cuadre.nivel == "alerta"
     assert "otros impuestos" in cuadre.detalle
+
+
+def test_c7_es_alerta_no_bloqueante():
+    docs = [documento(indice=0, cufe="inc", impuestos_otros=Decimal("500"))]
+    assert not hay_cuadres_fallidos((cuadre_otros_impuestos(resultado(*docs)),))
+
+
+def test_c7_inexplicable_bloquea():
+    # Total menor que IVA + otros impuestos: no cuadra con sus componentes (D-47).
+    docs = [documento(indice=0, cufe="mal", iva=Decimal("1900"), impuestos_otros=Decimal("5000"), total=Decimal("100"))]
+    cuadre = cuadre_otros_impuestos(resultado(*docs))
+    assert not cuadre.ok
+    assert cuadre.bloqueante
+    assert "no cuadra" in cuadre.detalle
+
+
+def test_total_neto_resta_otros_impuestos():
+    doc = documento(indice=0, impuestos_otros=Decimal("500"), iva=Decimal("1900"), total=Decimal("11900"))
+    assert doc.total_neto == Decimal("9500")
 
 
 def test_c7_ok():
@@ -147,7 +180,7 @@ def test_c7_ok():
 
 
 def test_ejecutar_cuadres_devuelve_los_siete_en_orden():
-    docs = [documento(indice=0, cufe="a", nit_receptor="1020396459")]
+    docs = [documento(indice=0, cufe="a", nit_receptor="900000001")]
     cuadres = ejecutar_cuadres(
         resultado(*docs), CLIENTE, PERIODO, filas_dian=1, total_dian=Decimal("11900")
     )

@@ -5,13 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from decimal import Decimal
 
-from PySide6.QtCore import QThread
+from PySide6.QtCore import QStandardPaths, QThread
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QLabel,
     QListWidget,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QLineEdit,
@@ -65,9 +67,14 @@ class VentanaPrincipal(QMainWindow):
         self._error: str | None = None
         self._hilo_procesar: QThread | None = None
         self._trabajo: HiloProcesar | None = None
+        self._hilos: list[QThread] = []
+        self._generacion = 0
+        self._ultima_carpeta = ""
         self._soportes_verificados: set[str] = set()
         self._ocr = Ocr()
         self._estado = QLabel("Ningún mes procesado todavía.")
+        self._estado.setWordWrap(True)
+        self._estado.setMinimumHeight(28)
         self._etiquetas: dict[str, QLabel] = {}
         self._lista_no_clasificados = QListWidget()
         self._tabla_retefuente = QTableWidget()
@@ -99,9 +106,11 @@ class VentanaPrincipal(QMainWindow):
         layout.setHorizontalSpacing(8)
         layout.setVerticalSpacing(6)
 
-        layout.addWidget(QLabel("Listado DIAN (.xlsx)"), 0, 0)
+        layout.addWidget(QLabel("Listado DIAN (Excel descargado)"), 0, 0)
         self._campo_ruta = QLineEdit()
-        self._campo_ruta.setPlaceholderText("Ruta del listado descargado de la DIAN")
+        self._campo_ruta.setPlaceholderText(
+            "El Excel que descargaste de la DIAN (tu hoja .xlsm también sirve: tiene la pestaña Dian)"
+        )
         layout.addWidget(self._campo_ruta, 0, 1, 1, 2)
         boton_ruta = QPushButton("Examinar…")
         boton_ruta.clicked.connect(self._examinar_archivo)
@@ -129,22 +138,28 @@ class VentanaPrincipal(QMainWindow):
         self._campo_nombre = QLineEdit()
         self._campo_nombre.setPlaceholderText("Nombre del cliente")
         layout.addWidget(self._campo_nombre, 3, 1)
-        layout.addWidget(QLabel("NIT del cliente"), 3, 2)
+        layout.addWidget(QLabel("Tipo"), 3, 2)
+        self.combo_tipo = QComboBox()
+        self.combo_tipo.addItems(["NIT", "CC"])
+        layout.addWidget(self.combo_tipo, 3, 3)
+        layout.addWidget(QLabel("NIT / CC del cliente"), 4, 0)
         self._campo_nit = QLineEdit()
-        self._campo_nit.setPlaceholderText("NIT del cliente")
-        layout.addWidget(self._campo_nit, 3, 3)
-
-        layout.addWidget(QLabel("Carpeta de salida"), 4, 0)
+        self._campo_nit.setPlaceholderText("NIT o cédula (sin puntos ni DV)")
+        layout.addWidget(self._campo_nit, 4, 1)
+        layout.addWidget(QLabel("Carpeta de salida"), 4, 2)
         self._campo_carpeta = QLineEdit()
         self._campo_carpeta.setText(str(Path.home() / "Documents" / "Hojas_trabajo" / "salidas"))
-        layout.addWidget(self._campo_carpeta, 4, 1, 1, 3)
+        layout.addWidget(self._campo_carpeta, 4, 3)
 
         self.btn_procesar = QPushButton("Procesar")
         self.btn_procesar.clicked.connect(self._on_btn_procesar)
         self.btn_exportar = QPushButton("Exportar hoja de trabajo")
         self.btn_exportar.clicked.connect(self._on_btn_exportar)
         self.btn_exportar.setEnabled(False)
-        self.btn_configuracion = QPushButton("Configuración tributaria…")
+        self.check_otros = QCheckBox("Entiendo la diferencia y quiero exportar")
+        self.check_otros.setEnabled(False)
+        self.check_otros.toggled.connect(lambda _checked: self._refrescar())
+        self.btn_configuracion = QPushButton("Datos tributarios (contador)…")
         self.btn_configuracion.clicked.connect(self._on_btn_configuracion)
         self.btn_verificar_soportes = QPushButton("Verificar soportes (OCR, opcional)…")
         self.btn_verificar_soportes.clicked.connect(self._on_btn_verificar_soportes)
@@ -152,13 +167,14 @@ class VentanaPrincipal(QMainWindow):
         layout.addWidget(self.btn_exportar, 5, 1)
         layout.addWidget(self.btn_configuracion, 5, 2)
         layout.addWidget(self.btn_verificar_soportes, 5, 3)
+        layout.addWidget(self.check_otros, 6, 0, 1, 4)
 
         return contenedor
 
     # --- Perfiles por cliente (Fase 4) -------------------------------------------------
 
     def _cargar_perfiles(self) -> None:
-        """Llena el combo con los clientes recordados; no cambia el formulario."""
+        """Llena el combo con los clientes recordados y, si hay uno, lo pone en el formulario."""
         self.combo_perfiles.blockSignals(True)
         self.combo_perfiles.clear()
         perfiles = self._repo.perfiles()
@@ -169,6 +185,8 @@ class VentanaPrincipal(QMainWindow):
                 etiqueta = f"{perfil.cliente.nombre} ({perfil.cliente.numero})"
                 self.combo_perfiles.addItem(etiqueta, perfil.cliente.numero)
         self.combo_perfiles.blockSignals(False)
+        if len(perfiles) == 1:
+            self._on_perfil_cambiado(0)
 
     def _guardar_perfil(self) -> None:
         """Guarda el cliente actual para no volver a escribirlo cada mes."""
@@ -178,7 +196,11 @@ class VentanaPrincipal(QMainWindow):
             self._estado.setText("Para guardar el cliente necesito su nombre y su NIT.")
             return
         perfil = PerfilCliente(
-            cliente=Cliente(nombre=nombre, tipo_identificacion="NIT", numero=nit),
+            cliente=Cliente(
+                nombre=nombre,
+                tipo_identificacion=self.combo_tipo.currentText() if hasattr(self, "combo_tipo") else "NIT",
+                numero=nit,
+            ),
             carpeta_salida=self._campo_carpeta.text().strip(),
         )
         self._repo.guardar_perfil(perfil)
@@ -199,6 +221,8 @@ class VentanaPrincipal(QMainWindow):
             return
         self._campo_nombre.setText(perfil.cliente.nombre)
         self._campo_nit.setText(perfil.cliente.numero)
+        if hasattr(self, "combo_tipo"):
+            self.combo_tipo.setCurrentText(perfil.cliente.tipo_identificacion)
         if perfil.carpeta_salida:
             self._campo_carpeta.setText(perfil.carpeta_salida)
 
@@ -209,9 +233,29 @@ class VentanaPrincipal(QMainWindow):
             self._llenar_tabla_retefuente()
 
     def _examinar_archivo(self) -> None:
-        ruta, _filtro = QFileDialog.getOpenFileName(self, "Listado de la DIAN", "", "Excel (*.xlsx)")
-        if ruta:
-            self._campo_ruta.setText(ruta)
+        ruta, _filtro = QFileDialog.getOpenFileName(
+            self,
+            "Listado de la DIAN",
+            self._carpeta_inicial(),
+            "Todos los archivos (*);;Listados Excel (*.xlsx *.xlsm *.xls)",
+        )
+        if not ruta:
+            return
+        archivo = Path(ruta)
+        self._ultima_carpeta = str(archivo.parent)
+        self._campo_ruta.setText(ruta)
+        if archivo.suffix.lower() == ".xls":
+            self._estado.setText(
+                "Ese archivo es .xls (formato antiguo). Ábrelo en Excel y guárdalo como .xlsx "
+                "para poder procesarlo."
+            )
+
+    def _carpeta_inicial(self) -> str:
+        """Abre el diálogo en la última carpeta usada o, si no, en Descargas (Windows)."""
+        if self._ultima_carpeta and Path(self._ultima_carpeta).is_dir():
+            return self._ultima_carpeta
+        carpeta = _carpeta_descargas()
+        return str(carpeta if carpeta.is_dir() else Path.home())
 
     def _resumen(self) -> QWidget:
         contenedor = QWidget()
@@ -221,11 +265,14 @@ class VentanaPrincipal(QMainWindow):
         for codigo, titulo in CODIGOS_CUADRES:
             etiqueta = QLabel(f"{codigo} — {titulo}: —")
             etiqueta.setObjectName(f"cuadre-{codigo}")
+            etiqueta.setWordWrap(True)
+            etiqueta.setMinimumHeight(28)
             self._etiquetas[codigo] = etiqueta
             layout.addWidget(etiqueta)
 
         layout.addWidget(QLabel("Documentos sin clasificar"))
         self._lista_no_clasificados = QListWidget()
+        self._lista_no_clasificados.setMaximumHeight(90)
         layout.addWidget(self._lista_no_clasificados)
 
         return contenedor
@@ -250,29 +297,55 @@ class VentanaPrincipal(QMainWindow):
     def _refrescar(self) -> None:
         if self._proceso is None:
             self.btn_exportar.setEnabled(False)
-            self._estado.setText("Ningún mes procesado todavía.")
+            self._estado.setText(self._error or "Ningún mes procesado todavía.")
         else:
+            requiere = self._proceso.requiere_confirmacion_otros
+            confirmado = getattr(self, "check_otros", None)
+            chequeado = bool(confirmado and confirmado.isChecked())
             habilitado = (
                 not self._proceso.mes_vacio
                 and self._proceso.puede_exportar
                 and self._error is None
+                and ((not requiere) or chequeado)
             )
             self.btn_exportar.setEnabled(habilitado)
-            self._estado.setText(
+            resumen = (
                 "Mes procesado: "
                 f"{self._proceso.filas_dian} documentos, "
                 f"total {self._proceso.total_dian}"
             )
+            if self._error is not None:
+                resumen = self._error
+            elif self._proceso.mes_vacio:
+                resumen += ". No hay documentos que puedan ir a las hojas."
+            elif not self._proceso.puede_exportar:
+                fallidos = ", ".join(c.codigo for c in self._proceso.cuadres_fallidos)
+                resumen += f". Revisa los cuadres en rojo ({fallidos}) antes de exportar."
+            elif requiere and not chequeado:
+                resumen += ". Hay otros impuestos (C7 en amarillo): marca la casilla para exportar."
+            self._estado.setText(resumen)
 
         if self._proceso is None:
+            if hasattr(self, "check_otros"):
+                self.check_otros.setEnabled(False)
             for codigo, titulo in CODIGOS_CUADRES:
                 self._etiquetas[codigo].setText(f"{codigo} — {titulo}: sin procesar")
             self._lista_no_clasificados.clear()
             return
 
+        if hasattr(self, "check_otros"):
+            self.check_otros.setEnabled(self._proceso.requiere_confirmacion_otros)
+
         for codigo, titulo in CODIGOS_CUADRES:
             cuadre = next((c for c in self._proceso.cuadres if c.codigo == codigo), None)
-            estado = "OK" if cuadre is not None and cuadre.ok else ("FALLA" if cuadre else "—")
+            if cuadre is None:
+                estado = "—"
+            elif cuadre.ok:
+                estado = "OK"
+            elif not cuadre.bloqueante:
+                estado = "ALERTA"
+            else:
+                estado = "FALLA"
             detalle = cuadre.detalle if cuadre is not None else "sin ejecutar"
             self._etiquetas[codigo].setText(f"{codigo} — {titulo}: {estado}. {detalle}")
 
@@ -364,7 +437,11 @@ class VentanaPrincipal(QMainWindow):
         if not self._compras_del_proceso():
             self._estado.setText("No hay compras para retener en este mes.")
             return
-        retefuente = self._calcular_retefuente()
+        try:
+            retefuente = self._calcular_retefuente()
+        except Exception as exc:
+            self._estado.setText(f"No se pudo calcular la retención: {exc}")
+            return
         filas = self._tabla_retefuente.rowCount()
         for indice, linea in enumerate(retefuente.lineas):
             if linea.documento is None or indice >= filas:
@@ -375,7 +452,11 @@ class VentanaPrincipal(QMainWindow):
             )
             self._repo.asignar_concepto(linea.documento.nit_emisor, concepto_elegido)
         # Re-sugiere con las decisiones persistidas y exporta con el resultado confirmado.
-        retefuente = self._calcular_retefuente()
+        try:
+            retefuente = self._calcular_retefuente()
+        except Exception as exc:
+            self._estado.setText(f"No se pudieron recalcular las retenciones: {exc}")
+            return
         try:
             exportar_hoja(
                 self._proceso,
@@ -385,6 +466,9 @@ class VentanaPrincipal(QMainWindow):
                 EscritorOpenpyxl(),
                 retefuente=retefuente,
                 soportes_verificados=self.soportes_verificados,
+                confirmar_otros_impuestos=self.check_otros.isChecked() if hasattr(self, "check_otros") else False,
+                # El botón ya es la confirmación del usuario: no debe re-pedir.
+                confirmar_pendientes=True,
             )
         except ExportacionBloqueada as exc:
             self._error = str(exc)
@@ -445,9 +529,23 @@ class VentanaPrincipal(QMainWindow):
     # --- Procesamiento ------------------------------------------------------------
 
     def _parar_hilo(self) -> None:
-        if self._hilo_procesar is not None and self._hilo_procesar.isRunning():
-            self._hilo_procesar.quit()
-            self._hilo_procesar.wait(10000)
+        """Detiene el procesamiento anterior antes de lanzar otro.
+
+        Sin esto, el hilo viejo sigue trabajando y su resultado llega tarde. Las señales llevan un
+        número de generación, así que ese resultado viejo se descarta; aquí solo se le pide al hilo
+        anterior que termine y se espera un poco. Si no alcanza (archivo muy grande) queda vivo en
+        `_hilos` hasta que su propio `finished` lo suelte, para que Qt no lo destruya en marcha.
+        """
+        hilo = self._hilo_procesar
+        self._trabajo = None
+        self._hilo_procesar = None
+        if hilo is not None and hilo.isRunning():
+            hilo.quit()
+            hilo.wait(3000)
+
+    def _soltar_hilo(self, hilo: QThread) -> None:
+        if hilo in self._hilos:
+            self._hilos.remove(hilo)
 
     def _on_btn_procesar(self) -> None:
         ruta = Path(self._campo_ruta.text())
@@ -456,7 +554,8 @@ class VentanaPrincipal(QMainWindow):
         periodo = Periodo(anio=anio, mes=mes)
         nit = self._campo_nit.text().strip()
         nombre = self._campo_nombre.text().strip() or f"Cliente {nit}"
-        cliente = Cliente(nombre=nombre, tipo_identificacion="NIT", numero=nit) if nit else None
+        tipo = self.combo_tipo.currentText() if hasattr(self, "combo_tipo") else "NIT"
+        cliente = Cliente(nombre=nombre, tipo_identificacion=tipo, numero=nit) if nit else None
         if cliente is None:
             self._estado.setText("Ingresa el NIT del cliente para procesar.")
             return
@@ -467,42 +566,88 @@ class VentanaPrincipal(QMainWindow):
     def procesar(self, ruta: Path, cliente: Cliente, periodo: Periodo) -> None:
         """Lanza el procesamiento en un QThread y refresca la vista al terminar."""
         self._parar_hilo()
-        trabajo = HiloProcesar(ruta, cliente, periodo)
+        self._proceso = None
+        self._error = None
+        self._soportes_verificados.clear()
+        self._refrescar()
+        self._estado.setText("Procesando el listado…")
+        self.btn_procesar.setEnabled(False)
+        self._generacion += 1
+        trabajo = HiloProcesar(ruta, cliente, periodo, generacion=self._generacion)
         hilo = QThread()
         trabajo.moveToThread(hilo)
-        trabajo.termino.connect(self._on_termino)
-        trabajo.error.connect(self._on_error)
+        trabajo.termino_generacion.connect(self._on_termino)
+        trabajo.error_generacion.connect(self._on_error)
         trabajo.finished.connect(hilo.quit)
-        hilo.finished.connect(hilo.deleteLater)
+        hilo.finished.connect(lambda: self._soltar_hilo(hilo))
         hilo.started.connect(trabajo.trabajar)
         self._hilo_procesar = hilo
         self._trabajo = trabajo
+        self._hilos.append(hilo)
         hilo.start()
 
-    def _on_termino(self, resultado: ResultadoProcesamiento | None) -> None:
+    def _on_termino(self, resultado: ResultadoProcesamiento | None, generacion: int) -> None:
+        if generacion != self._generacion:
+            return
         if resultado is None:
-            self._error = "El listado no se pudo procesar: revisa la ruta y los datos."
+            if self._error is None:
+                self._error = "El listado no se pudo procesar: revisa la ruta y los datos."
         else:
             self._proceso = resultado
             self._error = None
             self._soportes_verificados.clear()
+        self.btn_procesar.setEnabled(True)
         self._refrescar()
 
-    def _on_error(self, mensaje: str) -> None:
+    def _on_error(self, mensaje: str, generacion: int) -> None:
+        if generacion != self._generacion:
+            return
         self._error = mensaje
+        self.btn_procesar.setEnabled(True)
         self._refrescar()
+
+    def closeEvent(self, evento) -> None:
+        """Detiene los hilos antes de cerrar para no dejar procesos ni Qt a medias."""
+        self._parar_hilo()
+        for hilo in list(self._hilos):
+            try:
+                hilo.quit()
+                hilo.wait(5000)
+            except RuntimeError:
+                pass
+        self._hilos.clear()
+        try:
+            self._repo.cerrar()
+        except Exception:
+            pass
+        super().closeEvent(evento)
 
     # --- Exportación ---------------------------------------------------------------
 
     def _on_btn_exportar(self) -> None:
         if self._proceso is None or self._cliente is None or self._periodo is None:
             return
+        aviso = ""
+        confirmar_pendientes = False
         try:
             retefuente = self._calcular_retefuente()
         except Exception as exc:
-            self._error = str(exc)
-            self._estado.setText(f"No se pudo calcular la retención: {exc}")
-            return
+            retefuente = None
+            aviso = (
+                "Se exportó sin la pestaña Retefuente porque todavía no tienes los "
+                f"datos tributarios del año: {exc}"
+            )
+        if retefuente is not None and retefuente.hay_pendientes:
+            respuesta = QMessageBox.question(
+                self,
+                "Líneas pendientes de confirmar",
+                f"Hay {retefuente.cantidad_pendientes} línea(s) pendientes de confirmar.\n\n"
+                "¿Quieres exportar igualmente como PROVISIONAL?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if respuesta != QMessageBox.StandardButton.Yes:
+                return
+            confirmar_pendientes = True
         try:
             ruta = exportar_hoja(
                 self._proceso,
@@ -512,15 +657,20 @@ class VentanaPrincipal(QMainWindow):
                 EscritorOpenpyxl(),
                 retefuente=retefuente,
                 soportes_verificados=self.soportes_verificados,
+                confirmar_otros_impuestos=self.check_otros.isChecked() if hasattr(self, "check_otros") else False,
+                confirmar_pendientes=confirmar_pendientes,
             )
         except ExportacionBloqueada as exc:
             self._error = str(exc)
             self._estado.setText(f"No se pudo exportar: {exc}")
             return
         self._error = None
-        self._estado.setText(f"Exportado: {ruta.name}")
+        mensaje = f"Exportado: {ruta.name}"
+        if aviso:
+            mensaje += f". {aviso}"
+        self._estado.setText(mensaje)
 
-    def exportar(self, carpeta: Path) -> Path:
+    def exportar(self, carpeta: Path, confirmar_otros_impuestos: bool = False, confirmar_pendientes: bool = False) -> Path:
         """Exporta la hoja de trabajo. Lanza `ExportacionBloqueada` si hay cuadre fallido."""
         if self._proceso is None or self._cliente is None or self._periodo is None:
             raise ValueError("No hay un mes procesado para exportar.")
@@ -532,4 +682,20 @@ class VentanaPrincipal(QMainWindow):
             EscritorOpenpyxl(),
             retefuente=self._calcular_retefuente(),
             soportes_verificados=self.soportes_verificados,
+            confirmar_otros_impuestos=confirmar_otros_impuestos or (hasattr(self, "check_otros") and self.check_otros.isChecked()),
+            confirmar_pendientes=confirmar_pendientes,
         )
+
+
+def _carpeta_descargas() -> Path:
+    """Devuelve la carpeta Descargas que maneja Windows (p. ej. `D:\\Downloads`).
+
+    Usa `QStandardPaths.DownloadLocation`, el modo Qt de pedirle a Windows la carpeta
+    real de descargas, y solo `pathlib`. No se usan rutas duras (`C:` ni `D:`).
+    """
+    carpeta = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
+    if carpeta:
+        ruta = Path(carpeta)
+        if ruta.is_dir():
+            return ruta
+    return Path.home()

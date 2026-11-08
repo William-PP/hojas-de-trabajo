@@ -15,7 +15,7 @@ from dian_hojas.dominio.enums import Categoria
 from dian_hojas.infraestructura.lector_dian_xlsx import COLUMNAS_ESPERADAS
 from dian_hojas.reglas.clasificador import clasificar
 
-CLIENTE_NIT = "1020396459"
+CLIENTE_NIT = "900000001"
 PROVEEDOR_NIT = "900123456"
 OTRO_NIT = "800999111"
 

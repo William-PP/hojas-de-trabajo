@@ -91,7 +91,13 @@ def construir_configuracion(
 
     validos: dict[str, ConceptoTributario] = {}
     faltantes: list[str] = []
-    for nombre in CONCEPTOS:
+    # Los cinco base son obligatorios; cualquier concepto extra que venga también se valida
+    # y se conserva (D-49: el editor permite agregar conceptos nuevos).
+    nombres_a_revisar: list[str] = list(CONCEPTOS)
+    for clave in conceptos.keys():
+        if clave not in nombres_a_revisar:
+            nombres_a_revisar.append(clave)
+    for nombre in nombres_a_revisar:
         dato = conceptos.get(nombre)
         if isinstance(dato, ConceptoTributario):
             base = dato.base_minima_uvt
@@ -145,6 +151,9 @@ def construir_configuracion(
 
 def texto_configuracion(configuracion: ConfiguracionTributaria) -> str:
     """Serializa la configuración con la misma forma que espera `cargar_configuracion`."""
+    orden = [n for n in CONCEPTOS if n in configuracion.conceptos] + sorted(
+        n for n in configuracion.conceptos if n not in CONCEPTOS
+    )
     datos = {
         "anio": configuracion.anio,
         "uvt_pesos": str(configuracion.uvt_pesos),
@@ -153,7 +162,7 @@ def texto_configuracion(configuracion: ConfiguracionTributaria) -> str:
                 "base_minima_uvt": str(configuracion.conceptos[nombre].base_minima_uvt),
                 "tarifa": str(configuracion.conceptos[nombre].tarifa),
             }
-            for nombre in CONCEPTOS
+            for nombre in orden
         },
     }
     return yaml.safe_dump(datos, allow_unicode=True, sort_keys=False)

@@ -150,6 +150,9 @@ class VentanaPrincipal(QMainWindow):
         self._campo_carpeta = QLineEdit()
         self._campo_carpeta.setText(str(Path.home() / "Documents" / "Hojas_trabajo" / "salidas"))
         layout.addWidget(self._campo_carpeta, 4, 3)
+        boton_carpeta = QPushButton("Examinar…")
+        boton_carpeta.clicked.connect(self._examinar_carpeta)
+        layout.addWidget(boton_carpeta, 4, 4)
 
         self.btn_procesar = QPushButton("Procesar")
         self.btn_procesar.clicked.connect(self._on_btn_procesar)
@@ -249,6 +252,15 @@ class VentanaPrincipal(QMainWindow):
                 "Ese archivo es .xls (formato antiguo). Ábrelo en Excel y guárdalo como .xlsx "
                 "para poder procesarlo."
             )
+
+    def _examinar_carpeta(self) -> None:
+        carpeta = QFileDialog.getExistingDirectory(
+            self,
+            "Carpeta de salida",
+            self._campo_carpeta.text() or self._carpeta_inicial(),
+        )
+        if carpeta:
+            self._campo_carpeta.setText(carpeta)
 
     def _carpeta_inicial(self) -> str:
         """Abre el diálogo en la última carpeta usada o, si no, en Descargas (Windows)."""

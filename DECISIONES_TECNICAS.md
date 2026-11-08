@@ -529,7 +529,88 @@ con estilo `Dian-style`. Al guardar como `.xlsx` con openpyxl, Excel rechaza el 
   panel fijo quedan intactos; el original no se toca.
 - Verificado con Excel COM: el archivo generado desde el `.xlsm` real ya abre sin el aviso.
 
-**Estado:** pendiente de aprobación del usuario.
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-55. Guía y placeholder sin cifra (editor tributario)
+
+**Decisión (pendiente de aprobación del usuario):**
+La ventana dice «Pídele a tu contador la UVT del año, las bases mínimas y las tarifas. Luego
+carga el archivo que te dé o escribe los datos aquí y pulsa Guardar datos.» El placeholder de
+UVT es «Valor oficial de la UVT del año» (sin cifra de ejemplo).
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-56. Tarifa en % con coma (editor tributario)
+
+**Decisión (pendiente de aprobación del usuario):**
+La columna es «Tarifa (%)»: el usuario escribe `4`, `4%` o `2,5` (coma o punto) y la app lo
+guarda como decimal en el YAML (5% → `0.05`). Se valida 0–100.
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-57. Base mínima 0 = sin mínimo
+
+**Decisión (pendiente de aprobación del usuario):**
+`base_minima_uvt = 0` se acepta como «sin mínimo» y la ventana lo explica. Un campo vacío sigue
+siendo dato faltante (D-34).
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-58. Agregar / Quitar concepto sin duplicados
+
+**Decisión (pendiente de aprobación del usuario):**
+Botones «Agregar concepto» y «Quitar concepto» con nombre libre; no se permiten duplicados
+(case-insensitive). No se pueden quitar los 5 conceptos base.
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-59. Validación en rojo al guardar
+
+**Decisión (pendiente de aprobación del usuario):**
+Al guardar inválido se marcan en rojo cada celda afectada (UVT, base, tarifa, duplicado) y se
+listan en el estado. No se escribe el archivo hasta que todo sea válido.
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-60. Cierre con cambios sin guardar
+
+**Decisión (pendiente de aprobación del usuario):**
+«Cerrar» (y cerrar la ventana) pide confirmación si hay cambios sin guardar frente al snapshot
+cargado/guardado.
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-61. Fuente / Fecha (opcional)
+
+**Decisión (pendiente de aprobación del usuario):**
+Campos opcionales «Fuente / validado por» y «Fecha de validación» guardados en el YAML y
+escritos en la pestaña Retefuente junto a año, UVT, bases y tarifas.
+
+**Estado:** aprobada por el usuario (2026-11-07).
+
+---
+
+## D-62. Layout: columnas estiradas y Guardar por defecto
+
+**Decisión (pendiente de aprobación del usuario):**
+Las columnas de la tabla se estiran al ancho de la ventana y «Guardar datos» es el botón por
+defecto (resaltado) para Enter.
+
+**Estado:** aprobada por el usuario (2026-11-07).
 
 ---
 
@@ -569,6 +650,14 @@ con estilo `Dian-style`. Al guardar como `.xlsx` con openpyxl, Excel rechaza el 
 | D-52 | NIT sin DV en C6 | usuario |
 | D-53 | Windows QStandardPaths + pathlib | usuario |
 | D-54 | Sin tabla Excel en Dian | pendiente |
+| D-55 | Guía y placeholder sin cifra | usuario |
+| D-56 | Tarifa en % con coma | usuario |
+| D-57 | Base mínima 0 = sin mínimo | usuario |
+| D-58 | Agregar/quitar sin duplicados | usuario |
+| D-59 | Validación en rojo al guardar | usuario |
+| D-60 | Cierre con cambios sin guardar | usuario |
+| D-61 | Fuente/Fecha opcional | usuario |
+| D-62 | Layout estirado y Guardar por defecto | usuario |
 
 **Pendientes:** D-02, D-13, D-29, D-54
 

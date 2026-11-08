@@ -262,6 +262,13 @@ class EscritorOpenpyxl:
         )
         etiqueta.font = estilos.FUENTE_TOTAL_ETIQUETA
         siguiente = fila + 1
+        if getattr(retefuente, "fuente", "") or getattr(retefuente, "fecha_validacion", ""):
+            ws.cell(
+                row=siguiente,
+                column=plantilla.COLUMNA_RETIFUERTE_CONCEPTO,
+                value=f"Fuente: {getattr(retefuente, 'fuente', '') or '-'} · Fecha: {getattr(retefuente, 'fecha_validacion', '') or '-'}",
+            ).font = estilos.FUENTE_DATO
+            siguiente += 1
         for nombre, base_minima, tarifa in retefuente.conceptos:
             ws.cell(row=siguiente, column=plantilla.COLUMNA_RETIFUERTE_CONCEPTO, value=nombre).font = estilos.FUENTE_DATO
             ws.cell(row=siguiente, column=plantilla.COLUMNA_RETIFUERTE_BASE_MIN, value=base_minima).font = estilos.FUENTE_DATO

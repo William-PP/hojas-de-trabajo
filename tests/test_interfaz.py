@@ -170,16 +170,18 @@ def test_dialogo_configuracion_carga_y_guarda(qtbot, tmp_path):
     dialogo.cargar_archivo(ruta)
     assert dialogo.campo_uvt.text() == "220000"
     assert dialogo.tabla.item(0, 1).text() == "1"
-    assert dialogo.tabla.item(0, 2).text() == "0.05"
+    assert dialogo.tabla.item(0, 2).text() == "5"
 
     dialogo.campo_uvt.setText("230000")
-    dialogo.tabla.item(0, 2).setText("0.10")
+    dialogo.tabla.item(0, 2).setText("10")
+    dialogo.campo_fuente.setText("Contador Prueba")
     guardada = dialogo.guardar()
 
     assert guardada == ruta
     configuracion = cargar_configuracion(2026, ruta)
     assert configuracion.uvt_pesos == Decimal("230000")
     assert configuracion.conceptos["compras"].tarifa == Decimal("0.10")
+    assert configuracion.fuente == "Contador Prueba"
 
 
 def test_dialogo_configuracion_no_guarda_si_falta_un_dato(qtbot, tmp_path):
@@ -289,3 +291,59 @@ def test_descargas_usa_qstandardpaths(qtbot):
         # No existe en este equipo: el helper cae a Path.home().
         assert _carpeta_descargas() == _carpeta_descargas()
     mock.assert_called()
+
+
+def test_tarifa_porcentaje_con_coma(qtbot, tmp_path):
+    from decimal import Decimal
+
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+
+    ruta = _config_retefuente(tmp_path)
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+    dialogo.cargar_archivo(ruta)
+    dialogo.tabla.item(0, 2).setText("2,5%")
+    dialogo.guardar()
+    from dian_hojas.reglas.configuracion import cargar_configuracion
+
+    assert cargar_configuracion(2026, ruta).conceptos["compras"].tarifa == Decimal("0.025")
+
+
+def test_base_cero_vs_vacio(qtbot, tmp_path):
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+
+    ruta = _config_retefuente(tmp_path)
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+    dialogo.cargar_archivo(ruta)
+    dialogo.tabla.item(0, 1).setText("0")
+    dialogo.guardar()
+    from dian_hojas.reglas.configuracion import cargar_configuracion
+
+    assert cargar_configuracion(2026, ruta).conceptos["compras"].base_minima_uvt == __import__("decimal").Decimal("0")
+
+
+def test_guardar_marca_celdas_rojas(qtbot, tmp_path):
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+
+    ruta = _config_retefuente(tmp_path)
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+    dialogo.cargar_archivo(ruta)
+    dialogo.campo_uvt.setText("")
+    dialogo.tabla.item(0, 2).setText("150")
+    dialogo._on_guardar()
+    assert "UVT" in dialogo._estado.text()
+    assert dialogo.tabla.item(0, 2).background().color().name() == "#f4cccc"
+
+
+def test_agregar_quitar_sin_duplicados(qtbot, tmp_path):
+    from dian_hojas.interfaz.vistas.configuracion import DialogoConfiguracionTributaria
+
+    dialogo = DialogoConfiguracionTributaria(tmp_path / "reglas")
+    qtbot.addWidget(dialogo)
+    dialogo.agregar_concepto("utilidades")
+    dialogo.agregar_concepto("utilidades")
+    assert dialogo._nombres_conceptos().count("utilidades") == 1
+    dialogo.quitar_concepto()
+    assert "utilidades" not in dialogo._nombres_conceptos()

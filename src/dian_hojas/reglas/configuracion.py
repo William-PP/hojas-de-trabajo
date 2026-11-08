@@ -40,6 +40,8 @@ class ConfiguracionTributaria:
     anio: int
     uvt_pesos: Decimal
     conceptos: dict[str, ConceptoTributario]
+    fuente: str = ""
+    fecha_validacion: str = ""
 
 
 def _decimal(
@@ -74,6 +76,8 @@ def construir_configuracion(
     conceptos: Mapping[str, object] | None,
     *,
     origen: Path | None = None,
+    fuente: object = "",
+    fecha_validacion: object = "",
 ) -> ConfiguracionTributaria:
     """Valida los datos y construye la configuración. No escribe nada."""
     anio = int(anio)
@@ -146,7 +150,10 @@ def construir_configuracion(
             "Rellena base_minima_uvt y tarifa para cada concepto."
         )
 
-    return ConfiguracionTributaria(anio=anio, uvt_pesos=uvt, conceptos=validos)
+    fuente_txt = "" if fuente is None else str(fuente).strip()
+    fecha_txt = "" if fecha_validacion is None else str(fecha_validacion).strip()
+
+    return ConfiguracionTributaria(anio=anio, uvt_pesos=uvt, conceptos=validos, fuente=fuente_txt, fecha_validacion=fecha_txt)
 
 
 def texto_configuracion(configuracion: ConfiguracionTributaria) -> str:
@@ -154,9 +161,11 @@ def texto_configuracion(configuracion: ConfiguracionTributaria) -> str:
     orden = [n for n in CONCEPTOS if n in configuracion.conceptos] + sorted(
         n for n in configuracion.conceptos if n not in CONCEPTOS
     )
-    datos = {
+    datos: dict[str, object] = {
         "anio": configuracion.anio,
         "uvt_pesos": str(configuracion.uvt_pesos),
+        "fuente": str(configuracion.fuente),
+        "fecha_validacion": str(configuracion.fecha_validacion),
         "conceptos": {
             nombre: {
                 "base_minima_uvt": str(configuracion.conceptos[nombre].base_minima_uvt),
@@ -174,10 +183,12 @@ def guardar_configuracion(
     *,
     uvt_pesos: object,
     conceptos: Mapping[str, object] | None,
+    fuente: object = "",
+    fecha_validacion: object = "",
 ) -> Path:
     """Valida y escribe `reglas/[año].yaml`. Devuelve la ruta escrita."""
     ruta = Path(ruta)
-    configuracion = construir_configuracion(anio, uvt_pesos, conceptos, origen=ruta)
+    configuracion = construir_configuracion(anio, uvt_pesos, conceptos, origen=ruta, fuente=fuente, fecha_validacion=fecha_validacion)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     ruta.write_text(texto_configuracion(configuracion), encoding="utf-8")
     return ruta
@@ -198,6 +209,8 @@ def cargar_configuracion(anio: int, ruta: Path) -> ConfiguracionTributaria:
         datos.get("uvt_pesos"),
         datos.get("conceptos"),
         origen=ruta,
+        fuente=datos.get("fuente", "") or "",
+        fecha_validacion=datos.get("fecha_validacion", "") or "",
     )
 
 
@@ -230,4 +243,6 @@ def cargar_desde_archivo(ruta: Path, anio_por_defecto: int | None = None) -> Con
         datos.get("uvt_pesos"),
         datos.get("conceptos"),
         origen=ruta,
+        fuente=datos.get("fuente", "") or "",
+        fecha_validacion=datos.get("fecha_validacion", "") or "",
     )

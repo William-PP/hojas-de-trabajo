@@ -79,4 +79,6 @@ def confirmar_retefuente(
         anio=configuracion.anio,
         uvt_pesos=configuracion.uvt_pesos,
         conceptos=parametros,
+        fuente=getattr(configuracion, "fuente", "") or "",
+        fecha_validacion=getattr(configuracion, "fecha_validacion", "") or "",
     )

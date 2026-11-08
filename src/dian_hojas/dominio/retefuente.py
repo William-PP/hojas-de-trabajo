@@ -59,6 +59,8 @@ class RetefuenteMes:
     anio: int | None = None
     uvt_pesos: Decimal | None = None
     conceptos: tuple[tuple[str, Decimal, Decimal], ...] = ()
+    fuente: str = ""
+    fecha_validacion: str = ""
 
     @property
     def pendientes(self) -> tuple[LineaRetefuente, ...]:
@@ -101,6 +103,8 @@ def retefuente_mes(
     anio: int | None = None,
     uvt_pesos: Decimal | None = None,
     conceptos: tuple[tuple[str, Decimal, Decimal], ...] = (),
+    fuente: str = "",
+    fecha_validacion: str = "",
 ) -> RetefuenteMes:
     """Resultado del mes: líneas y retención total a declarar."""
     lineas_finales = tuple(lineas)
@@ -110,4 +114,6 @@ def retefuente_mes(
         anio=anio,
         uvt_pesos=uvt_pesos,
         conceptos=conceptos,
+        fuente=fuente,
+        fecha_validacion=fecha_validacion,
     )
